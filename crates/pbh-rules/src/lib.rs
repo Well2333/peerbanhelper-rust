@@ -1,8 +1,8 @@
 //! pbh-rules —— 共享规则匹配引擎 + 各封禁规则模块。
 //!
-//! 对应 Java：`util/rule/**`（匹配引擎）、`module/impl/rule/**` + `module/impl/monitor/**`（模块）。
+//! 对应上游：`util/rule/**`（匹配引擎）、`module/impl/rule/**` + `module/impl/monitor/**`（模块）。
 //!
-//! 骨架阶段仅落地匹配引擎的**精确优先级语义**（std-only、可离线单测）。
+//! M1 落地引擎：字符串规则匹配（`matcher`）、CIDR 最长前缀匹配（`ip_matcher`）、记忆化缓存（`cache`）。
 //! 各模块按里程碑补：
 //! - M4：AntiVampire、ClientNameBlacklist、PeerIdBlacklist、AutoRangeBan、IdleConnectionDosProtection、MultiDialingBlocker、PTRBlacklist
 //! - M5：ProgressCheatBlocker（依赖 pbh-storage）
@@ -11,9 +11,13 @@
 //!
 //! 注：上游的 ExpressionRule（Aviator 脚本引擎，JVM 限定）已**完全移除**，不保留 trait 边界。
 
+pub mod cache;
+pub mod ip_matcher;
 pub mod matcher;
 
-pub use matcher::{MatchOutcome, RuleMethod, RuleSet, StringRule};
+pub use cache::ModuleMatchCache;
+pub use ip_matcher::IpMatcher;
+pub use matcher::{MatchOutcome, Matcher, RuleParseError, RuleSet, StringRule};
 
 /// 规则模块统一接口（对应 Java `RuleFeatureModule`）。
 ///

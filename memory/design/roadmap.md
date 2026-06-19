@@ -53,10 +53,12 @@
 - 🔧 **工具链**：环境原 cargo 1.75 无法编译现代依赖(edition2024) → 已装 rustup `stable`(1.96)，构建用 `~/.cargo/bin/cargo`。
 - ⏭ 留待后续：版本迁移链(注释保留 R4)目前仅 serde 重生成;file 日志轮转保留默认。
 
-### M1 — 领域模型 + 规则引擎
-- Peer/PeerAddress/Torrent/PeerFlag、CheckResult/PeerAction、BanMetadata、BanList(IPv4/IPv6 前缀 trie)。
-- 共享匹配引擎（method 枚举 + `FALSE` 短路优先级）、IPMatcher(CIDR trie)、ModuleMatchCache。**纯字符串**承载 rule/description（无 i18n）。
-- **验收：** 引擎对 `profile.yml` 默认规则对拍;PeerFlag 往返;PeerAction 合并;BanList 最长前缀命中。
+### M1 — 领域模型 + 规则引擎 ✅ 已完成
+- ✅ 领域类型：Peer/PeerAddress/Torrent/PeerFlag、CheckResult/PeerAction(优先级合并)、BanMetadata。
+- ✅ 共享匹配引擎 `pbh-rules`：`Matcher`(STARTS_WITH/ENDS_WITH/CONTAINS/EQUALS/LENGTH/REGEX)+ `RuleSet`(FALSE 短路优先级)+ JSON `RuleSet::parse`;`IpMatcher`(CIDR 最长前缀,ip_network_table);`ModuleMatchCache`(moka,含 pass-only 写)。
+- ✅ `BanList`(`pbh-engine`)：双栈前缀 trie + RwLock,ban/unban/get/contains/remove_expired/snapshot,含 ban_for_disconnect 元数据。**纯字符串**承载 rule/description(无 i18n)。
+- ✅ **验收达成**：37 单测全绿(matcher 8 / ip_matcher 3 / cache 2 / ban_list 4 + M0)。
+- ⏭ 留待后续：PeerFlag 只解析模块实际用到的 interest 位(BTN 用原始串,无需全位重建);BanMetadata 的 serde/chrono 等到 M3(banlist 快照落库)再加。
 
 ### M2 — 下载器（qB + qBEE）
 - `Downloader` trait（**v2 精简**：login / getTorrents / getPeers / setBanList / featureFlags / 并发槽;去掉 speed-limiter / BTProtocolPort / natTranslate 等与封禁无关项）+ 工厂表。
