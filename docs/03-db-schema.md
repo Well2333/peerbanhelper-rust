@@ -1,7 +1,7 @@
 # PeerBanHelper-Rust 数据库 Schema（嵌入式 SQLite · v2 精简表集）
 
 > 本文件只列 **v2 实际保留的表**。已砍除的纯图表/告警表（`traffic_journal_v3`、
-> `peer_connection_metrics(+track)`、`alert`，详见 `02-strategy-and-roadmap.md` §3）不再收录。
+> `peer_connection_metrics(+track)`、`alert`，详见 `02-roadmap.md` §3）不再收录。
 > 上游完整 14 表结构如需查阅见 `source/.../databasent/` 与 `resources/db/migration/sqlite/`。
 
 > Rust 端：单文件 `<dataDir>/persist/peerbanhelper-nt.db`，WAL，`busy_timeout=60000`，写池单连接。迁移用 `sqlx::migrate!` 单个**合并版** `V1__initial.sql`。

@@ -29,7 +29,7 @@ impl Default for PeerAction {
 
 /// 一次规则检查的结果。对应 Java `CheckResult` record。
 ///
-/// 骨架阶段 `rule`/`reason` 用 `String` 占位；M1 改为 `pbh_i18n::TranslationComponent`。
+/// `rule`/`reason` 用纯 `String`（v2 无 i18n）。
 #[derive(Debug, Clone)]
 pub struct CheckResult {
     /// 产生该结果的模块标识（Java 中是模块 Class）。

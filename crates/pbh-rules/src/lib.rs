@@ -10,7 +10,7 @@
 //! - M6：IPBlackList / IPBlackRuleList（依赖 pbh-geoip）
 //! - M8：BtnNetworkOnline（在 pbh-btn 内调用引擎）
 //!
-//! ExpressionRule（Aviator）本期 **stub**：保留 trait 边界，未来可挂 JVM sidecar。
+//! 注：上游的 ExpressionRule（Aviator 脚本引擎，JVM 限定）已**完全移除**，不保留 trait 边界。
 
 pub mod matcher;
 
