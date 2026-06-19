@@ -70,9 +70,7 @@ impl CheckResult {
 }
 
 /// 一条封禁记录的元数据。对应 Java `BanMetadata`。
-///
-/// 骨架阶段仅放关键字段；M1 补全 `OffsetDateTime`(chrono)、`structured_data`、序列化。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BanMetadata {
     /// 产生封禁的模块标识。
     pub context: String,

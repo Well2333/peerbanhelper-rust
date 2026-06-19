@@ -69,6 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         paths.config_file("downloaders.yml"),
     ));
     let ban_list = Arc::new(BanList::new());
+    // 恢复上次的封禁快照（未过期的）。
+    let restored = BanManager::restore_banlist(&ban_list, &db).await;
+    if restored > 0 {
+        tracing::info!("恢复 {restored} 条封禁快照");
+    }
     // GeoIP 可选注入：从 <data>/geoip/ 加载 MaxMind mmdb；缺失则降级（ASN/地区检查跳过）。
     let geoip: Option<Arc<dyn GeoIpProvider>> =
         MaxmindProvider::load_from_dir(&paths.data_dir().join("geoip"))
@@ -179,11 +184,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => tracing::error!("监听地址无效 {bind}: {e}"),
     }
 
-    // 等待退出信号。
-    tokio::signal::ctrl_c().await.ok();
+    // 等待退出信号（Ctrl-C / SIGTERM）。
+    shutdown_signal().await;
     tracing::info!("收到退出信号，正在关闭…");
+    ctx.ban_manager.snapshot_to_db().await; // 关闭前快照封禁
     ctx.db.close().await;
     Ok(())
+}
+
+/// 等待 Ctrl-C 或（unix）SIGTERM，用于优雅关闭（systemd/docker stop 发 SIGTERM）。
+#[cfg(unix)]
+async fn shutdown_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = match signal(SignalKind::terminate()) {
+        Ok(s) => s,
+        Err(_) => {
+            tokio::signal::ctrl_c().await.ok();
+            return;
+        }
+    };
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c().await.ok();
 }
 
 /// 生成 32 hex 字符（16 字节）随机串，用于 token / 安装 ID。

@@ -131,6 +131,29 @@ impl Db {
         Ok(rows)
     }
 
+    /// 保存封禁快照（全量替换 `banlist`）。`entries` = (网络字符串, BanMetadata JSON)。
+    pub async fn save_banlist(&self, entries: &[(String, String)]) -> Result<()> {
+        let mut tx = self.pool().begin().await?;
+        sqlx::query("DELETE FROM banlist").execute(&mut *tx).await?;
+        for (addr, meta) in entries {
+            sqlx::query("INSERT INTO banlist(address, metadata) VALUES(?,?)")
+                .bind(addr)
+                .bind(meta)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// 读取封禁快照 (网络字符串, BanMetadata JSON)。
+    pub async fn load_banlist(&self) -> Result<Vec<(String, String)>> {
+        let rows: Vec<(String, String)> = sqlx::query_as("SELECT address, metadata FROM banlist")
+            .fetch_all(self.pool())
+            .await?;
+        Ok(rows)
+    }
+
     /// 历史总数。
     pub async fn count_ban_history(&self) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM history")
@@ -222,7 +245,20 @@ mod tests {
         let rows = db.query_ban_history(10, 0).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ip, "1.2.3.4");
-        // BTN 行查询含新字段。
+        // banlist 快照保存/读取（全量替换）。
+        db.save_banlist(&[
+            ("1.2.3.4/32".into(), "{\"x\":1}".into()),
+            ("10.0.0.0/8".into(), "{\"y\":2}".into()),
+        ])
+        .await
+        .unwrap();
+        let bl = db.load_banlist().await.unwrap();
+        assert_eq!(bl.len(), 2);
+        db.save_banlist(&[("9.9.9.9/32".into(), "{}".into())])
+            .await
+            .unwrap();
+        assert_eq!(db.load_banlist().await.unwrap().len(), 1); // 全量替换
+                                                               // BTN 行查询含新字段。
         let btn = db.query_btn_bans(0, 10).await.unwrap();
         assert_eq!(btn.len(), 1);
         assert_eq!(btn[0].peer_uploaded, 5000);

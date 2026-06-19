@@ -3,7 +3,7 @@
 use std::net::IpAddr;
 
 /// peer 网络地址。`raw_ip` 是下载器返回的原始 `ip:port` 键，封禁回传时必须用它。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PeerAddress {
     pub ip: IpAddr,
     pub port: u16,

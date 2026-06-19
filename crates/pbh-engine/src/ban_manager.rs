@@ -66,6 +66,8 @@ pub struct BanManager {
     track_swarm: bool,
     /// GeoIP 可选注入（封禁历史回填 peer_geoip）。
     geoip: Option<Arc<dyn pbh_geoip::GeoIpProvider>>,
+    /// 上次 banlist 快照落库时刻（epoch ms）。
+    last_snapshot_at: AtomicU64,
 }
 
 /// run_once 的重叠保护 RAII：退出时清标志。持有 `&AtomicBool`（Send），可跨 await。
@@ -104,7 +106,21 @@ impl BanManager {
             login_status: RwLock::new(HashMap::new()),
             track_swarm,
             geoip,
+            last_snapshot_at: AtomicU64::new(now_ms() as u64),
         })
+    }
+
+    /// 把当前内存封禁表快照落库（全量替换 banlist）。
+    pub async fn snapshot_to_db(&self) {
+        let entries: Vec<(String, String)> = self
+            .ban_list
+            .snapshot()
+            .into_iter()
+            .filter_map(|(net, meta)| serde_json::to_string(&meta).ok().map(|j| (net, j)))
+            .collect();
+        if let Err(e) = self.db.save_banlist(&entries).await {
+            tracing::warn!("banlist 快照失败: {e}");
+        }
     }
 
     pub fn ban_list(&self) -> &Arc<BanList> {
@@ -310,6 +326,29 @@ impl BanManager {
             .last_wave_at
             .store(wave_start as u64, Ordering::Relaxed);
         self.stats.last_wave_ms.store(elapsed, Ordering::Relaxed);
+
+        // 每小时把 banlist 快照落库（重启可恢复）。
+        if now_ms() as u64 - self.last_snapshot_at.load(Ordering::Relaxed) > 3_600_000 {
+            self.last_snapshot_at
+                .store(now_ms() as u64, Ordering::Relaxed);
+            self.snapshot_to_db().await;
+        }
+    }
+
+    /// 从 DB 恢复未过期的封禁快照到内存 BanList。返回恢复条数。
+    pub async fn restore_banlist(ban_list: &Arc<BanList>, db: &Db) -> usize {
+        let now = now_ms();
+        let mut n = 0;
+        if let Ok(entries) = db.load_banlist().await {
+            for (addr, json) in entries {
+                if let Ok(meta) = serde_json::from_str::<BanMetadata>(&json) {
+                    if meta.unban_at > now && ban_list.ban(&addr, meta) {
+                        n += 1;
+                    }
+                }
+            }
+        }
+        n
     }
 
     async fn record_ban(
