@@ -4,8 +4,7 @@
 //!
 //! 骨架阶段仅落地匹配引擎的**精确优先级语义**（std-only、可离线单测）。
 //! 各模块按里程碑补：
-//! - M4：AntiVampire / ClientNameBlacklist / PeerIdBlacklist / AutoRangeBan /
-//!        IdleConnectionDosProtection / MultiDialingBlocker / PTRBlacklist
+//! - M4：AntiVampire、ClientNameBlacklist、PeerIdBlacklist、AutoRangeBan、IdleConnectionDosProtection、MultiDialingBlocker、PTRBlacklist
 //! - M5：ProgressCheatBlocker（依赖 pbh-storage）
 //! - M6：IPBlackList / IPBlackRuleList（依赖 pbh-geoip）
 //! - M8：BtnNetworkOnline（在 pbh-btn 内调用引擎）

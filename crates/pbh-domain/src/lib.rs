@@ -7,12 +7,14 @@
 //! 以便在纯净宿主里离线编译与单测（见 `docs/最高优先级工作守则.md` 第 7/8 条）。
 //! M1 起补充 serde/chrono 派生与持久化映射。
 
+pub mod ban;
 pub mod error;
+pub mod log;
 pub mod peer;
 pub mod torrent;
-pub mod ban;
 
-pub use ban::{BanMetadata, PeerAction, CheckResult};
+pub use ban::{BanMetadata, CheckResult, PeerAction};
 pub use error::{PbhError, Result};
+pub use log::{LogBuffer, LogEntry};
 pub use peer::{Peer, PeerAddress, PeerFlag};
 pub use torrent::Torrent;

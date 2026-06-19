@@ -8,15 +8,14 @@ license.workspace = true
 name = "pbh"
 path = "src/main.rs"
 
-# 组合根。M0 起引入 tokio / tracing 并真正装配各子系统（依赖抽象、显式注入）。
-# 骨架阶段 std-only，仅打印启动横幅并校验各 crate 可链接。
+# 组合根。M0：装配 配置 + SQLite + 日志 + AppContext。
+# 后续里程碑按需加 pbh-rules/downloader/geoip/engine/btn/web 依赖。
 [dependencies]
 pbh-domain = { path = "../pbh-domain" }
 pbh-config = { path = "../pbh-config" }
 pbh-storage = { path = "../pbh-storage" }
-pbh-rules = { path = "../pbh-rules" }
-pbh-downloader = { path = "../pbh-downloader" }
-pbh-geoip = { path = "../pbh-geoip" }
-pbh-engine = { path = "../pbh-engine" }
-pbh-btn = { path = "../pbh-btn" }
-pbh-web = { path = "../pbh-web" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
+getrandom = "0.2"

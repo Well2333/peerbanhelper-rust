@@ -16,7 +16,10 @@ pub enum RuleMethod {
     Contains,
     Equals,
     /// 长度区间 [min, max]。
-    Length { min: usize, max: usize },
+    Length {
+        min: usize,
+        max: usize,
+    },
     /// 正则。骨架阶段不求值（返回 false 并标记 TODO）。M4 用 `regex`。
     Regex,
 }
@@ -36,9 +39,9 @@ impl StringRule {
     /// 该规则对给定输入的单条判定：`Some(true)`=匹配，`Some(false)`=显式放行，`None`=不适用。
     fn evaluate(&self, input: &str) -> Option<bool> {
         let hit = match &self.method {
-            RuleMethod::StartsWith => {
-                input.to_lowercase().starts_with(&self.content.to_lowercase())
-            }
+            RuleMethod::StartsWith => input
+                .to_lowercase()
+                .starts_with(&self.content.to_lowercase()),
             RuleMethod::EndsWith => input.to_lowercase().ends_with(&self.content.to_lowercase()),
             RuleMethod::Contains => input.to_lowercase().contains(&self.content.to_lowercase()),
             RuleMethod::Equals => input.eq_ignore_ascii_case(&self.content),
@@ -133,6 +136,9 @@ mod tests {
 
     #[test]
     fn empty_ruleset_is_false() {
-        assert_eq!(RuleSet::default().match_input("anything"), MatchOutcome::False);
+        assert_eq!(
+            RuleSet::default().match_input("anything"),
+            MatchOutcome::False
+        );
     }
 }

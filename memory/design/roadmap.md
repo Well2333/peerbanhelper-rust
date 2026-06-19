@@ -44,12 +44,14 @@
 > 开发纪律见守则;关键等价性逻辑（PCB、规则引擎、IP 规范化、下载器封禁串、BTN 序列化）**先写测试**。
 > 关键路径 M0→M1→M2→M3;M4/M5/M6 在 M3 后可部分并行;M7 可早搭;M8 依赖 M3(history)+M7。
 
-### M0 — 地基
-- workspace、`config.yml`/`profile.yml` serde 模型 + 加载 + 默认值 + `tokio::sync::watch` 热重载 + 版本迁移链脚手架。
-- `sqlx` SQLite 连接（WAL/synchronous=NORMAL/busy_timeout=60000/mmap_size），写池 `max_connections(1)`;`sqlx::migrate!` + 合并版 `V1__initial.sql`（精简表集，见 03）;KV `metadata`。
-- `tracing` 日志（文件 + 控制台 + 环形缓冲供 WS）;`AppContext` 组合根骨架。
-- **验收：** 启动建目录/建库/读写 KV/加载两份配置/热重载;迁移与配置加载有单测。
-- ⚠️ **首次引入外部依赖**（serde/tokio/sqlx 等），需联网验证版本与 rustc 兼容性。
+### M0 — 地基 ✅ 已完成
+- ✅ `pbh-config`：config/profile serde 模型 + 加载(缺失写默认) + `tokio::sync::watch` 热重载 + 目录解析(`Paths`)。
+- ✅ `pbh-storage`：`sqlx` SQLite(WAL/NORMAL/busy_timeout=60000/mmap_size)，写池 `max_connections(1)`;`migrations/0001_initial.sql`(精简表集);KV `metadata`。
+- ✅ `tracing` 日志（控制台 + 按日文件 + 环形缓冲 `pbh-domain::LogBuffer` 供 WS）;`AppContext` 组合根。
+- ✅ 二进制：解析目录→日志→配置(首启生成 token 写回)→SQLite+迁移→安装ID→状态→干净退出。
+- ✅ **验收达成**：24 单测全绿(config/storage/domain/...)，二进制两次启动验证 token/安装ID 持久化;clippy+fmt 零告警。
+- 🔧 **工具链**：环境原 cargo 1.75 无法编译现代依赖(edition2024) → 已装 rustup `stable`(1.96)，构建用 `~/.cargo/bin/cargo`。
+- ⏭ 留待后续：版本迁移链(注释保留 R4)目前仅 serde 重生成;file 日志轮转保留默认。
 
 ### M1 — 领域模型 + 规则引擎
 - Peer/PeerAddress/Torrent/PeerFlag、CheckResult/PeerAction、BanMetadata、BanList(IPv4/IPv6 前缀 trie)。

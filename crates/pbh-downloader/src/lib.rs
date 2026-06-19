@@ -59,8 +59,14 @@ mod tests {
 
     #[test]
     fn factory_dispatch() {
-        assert_eq!(create_downloader_stub("qBittorrent").unwrap(), "qBittorrent");
-        assert_eq!(create_downloader_stub("qbittorrentee").unwrap(), "qBittorrentEE");
+        assert_eq!(
+            create_downloader_stub("qBittorrent").unwrap(),
+            "qBittorrent"
+        );
+        assert_eq!(
+            create_downloader_stub("qbittorrentee").unwrap(),
+            "qBittorrentEE"
+        );
         assert!(create_downloader_stub("transmission").is_err());
     }
 }

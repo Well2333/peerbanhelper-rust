@@ -19,10 +19,12 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.75"
+# 现代依赖（hashbrown 0.17 等）内部用 edition2024,需 cargo/rustc >= 1.85。
+# 实测使用 rustup stable 1.96。本仓 edition 仍为 2021。
+rust-version = "1.85"
 
 # 统一依赖版本（按需在各 crate 的 [dependencies] 中以 `.workspace = true` 引入）。
-# 注：以下版本为施工建议；M0 阶段按实际 toolchain 调整。重型依赖（tokio/axum/sqlx/reqwest）
+# 重型依赖（tokio/axum/sqlx/reqwest）
 # 仅在需要它们的 crate 中开启，骨架阶段多数 crate 保持 std-only 以便离线编译。
 [workspace.dependencies]
 # --- 基础 ---

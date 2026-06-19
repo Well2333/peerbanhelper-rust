@@ -9,9 +9,10 @@ use crate::peer::PeerAddress;
 /// **序数即优先级**（来自 Java `PeerAction` 的 ordinal）：合并多个模块结果时取最高优先级，
 /// 同级取更长封禁时长。顺序：`NoAction < BanForDisconnect < Ban < Skip`。
 /// `Skip` 优先级最高（显式放行/短路），`Ban` 高于 `BanForDisconnect`（后者只为强制断开短暂封禁）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum PeerAction {
     /// 不处理。
+    #[default]
     NoAction,
     /// 短暂封禁以强制断开连接（PCB fastTest 用），随后解封。
     BanForDisconnect,
@@ -19,12 +20,6 @@ pub enum PeerAction {
     Ban,
     /// 显式放行（短路其余规则）。
     Skip,
-}
-
-impl Default for PeerAction {
-    fn default() -> Self {
-        PeerAction::NoAction
-    }
 }
 
 /// 一次规则检查的结果。对应 Java `CheckResult` record。
@@ -38,9 +33,9 @@ pub struct CheckResult {
     pub action: PeerAction,
     /// 封禁时长（毫秒）；`0` 表示沿用全局默认。
     pub duration_ms: i64,
-    /// 命中的规则（i18n key 占位）。
+    /// 命中的规则（v2 纯字符串）。
     pub rule: String,
-    /// 原因（i18n key 占位）。
+    /// 原因（v2 纯字符串）。
     pub reason: String,
 }
 
