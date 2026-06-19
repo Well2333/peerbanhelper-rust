@@ -1,0 +1,9 @@
+[package]
+name = "pbh-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# M0/M5 引入 sqlx(sqlite)、chrono、serde_json。骨架 std-only 占位。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

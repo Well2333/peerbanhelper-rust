@@ -1,0 +1,9 @@
+[package]
+name = "pbh-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# M3 引入 tokio / ip_network_table / parking_lot。骨架 std-only：BanList 占位 + NatAddressProvider 抽象。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

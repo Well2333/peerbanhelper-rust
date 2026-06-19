@@ -1,0 +1,9 @@
+[package]
+name = "pbh-i18n"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# 骨架阶段 std-only：落地 TranslationComponent 与 `{}` 顺序占位符填充（可离线测）。
+# M1 引入 serde（前端契约 {key,params[]}）、serde_yaml（加载 lang 文件）。
+[dependencies]

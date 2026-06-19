@@ -1,0 +1,71 @@
+# PeerBanHelper-Rust — Cargo workspace
+# 见 docs/02-construction-guide.md 的里程碑与 crate 分层。
+[workspace]
+resolver = "2"
+members = [
+    "crates/pbh-domain",
+    "crates/pbh-config",
+    "crates/pbh-storage",
+    "crates/pbh-i18n",
+    "crates/pbh-rules",
+    "crates/pbh-downloader",
+    "crates/pbh-geoip",
+    "crates/pbh-engine",
+    "crates/pbh-btn",
+    "crates/pbh-web",
+    "crates/pbh-notify",
+    "crates/pbh-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.75"
+
+# 统一依赖版本（按需在各 crate 的 [dependencies] 中以 `.workspace = true` 引入）。
+# 注：以下版本为施工建议；M0 阶段按实际 toolchain 调整。重型依赖（tokio/axum/sqlx/reqwest）
+# 仅在需要它们的 crate 中开启，骨架阶段多数 crate 保持 std-only 以便离线编译。
+[workspace.dependencies]
+# --- 基础 ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+ipnet = { version = "2", features = ["serde"] }
+
+# --- 异步/网络（M2+ 开启）---
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "gzip", "rustls-tls"] }
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "compression-gzip"] }
+
+# --- 存储（M0/M5）---
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono"] }
+
+# --- 工具 ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+moka = { version = "0.12", features = ["future"] }
+dashmap = "5"
+regex = "1"
+sha2 = "0.10"
+flate2 = "1"
+parking_lot = "0.12"
+# IP 前缀 trie（M1）：ip_network_table / treebitmap / iprange —— 选型见 04/01 文档
+ip_network_table = "0.2"
+# GeoIP（M6）
+maxminddb = "0.24"
+# DNS（M4）
+hickory-resolver = "0.24"
+# SMTP（M9）
+lettre = "0.11"
+# Markdown（M9）
+pulldown-cmark = "0.11"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

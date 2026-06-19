@@ -1,0 +1,9 @@
+[package]
+name = "pbh-domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# 骨架阶段：std-only，保证离线可编译/可测。
+# M1 起按需引入 serde/chrono/ipnet（见 workspace.dependencies）。
+[dependencies]

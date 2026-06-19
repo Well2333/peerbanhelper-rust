@@ -1,0 +1,9 @@
+[package]
+name = "pbh-downloader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# M2 引入 reqwest / serde / serde_json / ipnet。骨架 std-only：定义 trait 契约。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

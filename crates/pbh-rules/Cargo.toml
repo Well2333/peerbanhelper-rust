@@ -1,0 +1,10 @@
+[package]
+name = "pbh-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# 骨架阶段 std-only：先落地共享匹配引擎的精确优先级语义（可离线测）。
+# M4+ 引入 regex（REGEX 方法）、ipnet/ip_network_table（IPMatcher）、moka（ModuleMatchCache）、各模块。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

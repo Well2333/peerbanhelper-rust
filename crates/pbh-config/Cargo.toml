@@ -1,0 +1,9 @@
+[package]
+name = "pbh-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# M0 引入 serde / serde_yaml；骨架阶段 std-only 占位。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

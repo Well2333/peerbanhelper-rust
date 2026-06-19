@@ -1,0 +1,9 @@
+[package]
+name = "pbh-btn"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# M8 引入 reqwest / serde / serde_json / flate2 / sha2 / tokio。骨架 std-only：协议常量 + ability 枚举。
+[dependencies]
+pbh-domain = { path = "../pbh-domain" }

@@ -1,0 +1,9 @@
+[package]
+name = "pbh-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# 骨架阶段 std-only：落地 StdResp / PbhPage 信封形状（可离线）。
+# M7 引入 axum / tower-http / serde / serde_json：路由、鉴权中间件、静态/SPA、WS 日志流。
+[dependencies]
