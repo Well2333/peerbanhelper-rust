@@ -12,7 +12,9 @@ use pbh_rules::{
 };
 use pbh_storage::Db;
 
-use crate::{AutoRangeBan, BanList, PcbConfig, ProgressCheatBlocker, PtrBlacklist};
+use crate::{
+    AutoRangeBan, BanList, IpBlackRuleList, PcbConfig, ProgressCheatBlocker, PtrBlacklist, SubConfig,
+};
 
 /// 内置默认 PeerID 黑名单（常见离线下载/吸血客户端）。
 const DEFAULT_PEER_ID: &[&str] = &[
@@ -162,6 +164,19 @@ pub fn build_modules(
         }
     }
 
+    // ip-address-blocker-rules（IP 黑名单订阅，默认关闭）
+    if enabled(profile, "ip-address-blocker-rules", false) {
+        let m = "ip-address-blocker-rules";
+        let subs = parse_subs(profile, m);
+        let check_interval = field_i64(profile, m, "check-interval", 1_800_000);
+        out.push(IpBlackRuleList::new(
+            dur(profile, m, global_dur),
+            subs,
+            check_interval,
+            db.clone(),
+        ));
+    }
+
     // ptr-blacklist（默认关闭，需联网 DNS）
     if enabled(profile, "ptr-blacklist", false) {
         let m = "ptr-blacklist";
@@ -176,6 +191,36 @@ pub fn build_modules(
         }
     }
 
+    out
+}
+
+/// 从 `module.<name>.rules`（id → {enabled,name,url}）解析订阅列表。
+fn parse_subs(profile: &ProfileConfig, module: &str) -> Vec<SubConfig> {
+    let mut out = Vec::new();
+    let Some(rules) = profile
+        .module_section(module)
+        .and_then(|s| s.get("rules"))
+        .and_then(|v| v.as_mapping())
+    else {
+        return out;
+    };
+    for (k, v) in rules {
+        let Some(rule_id) = k.as_str() else { continue };
+        let url = v.get("url").and_then(|u| u.as_str()).unwrap_or("");
+        if url.is_empty() {
+            continue;
+        }
+        out.push(SubConfig {
+            rule_id: rule_id.to_string(),
+            rule_name: v
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or(rule_id)
+                .to_string(),
+            url: url.to_string(),
+            enabled: v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true),
+        });
+    }
     out
 }
 

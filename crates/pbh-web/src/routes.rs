@@ -29,6 +29,8 @@ pub fn router(state: WebState) -> Router {
         .route("/api/bans/{ip}", delete(remove_ban))
         .route("/api/bans/history", get(ban_history))
         .route("/api/config/profile", get(get_profile).put(put_profile))
+        .route("/api/sub/rules", get(list_sub_rules))
+        .route("/api/sub/logs", get(sub_rule_logs))
         .route("/api/logs", get(get_logs))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
@@ -265,6 +267,27 @@ async fn ban_history(State(st): State<WebState>, Query(q): Query<PageQuery>) -> 
         items,
     })
     .into_response()
+}
+
+// ---------------- IP 黑名单订阅状态 ----------------
+
+async fn list_sub_rules(State(st): State<WebState>) -> Response {
+    match st.db.list_rule_subs().await {
+        Ok(rows) => ApiResp::ok(rows).into_response(),
+        Err(e) => bad_request(e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct SubLogQuery {
+    id: String,
+}
+
+async fn sub_rule_logs(State(st): State<WebState>, Query(q): Query<SubLogQuery>) -> Response {
+    match st.db.query_rule_sub_logs(&q.id, 30).await {
+        Ok(rows) => ApiResp::ok(rows).into_response(),
+        Err(e) => bad_request(e.to_string()),
+    }
 }
 
 #[derive(Deserialize)]
