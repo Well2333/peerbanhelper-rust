@@ -83,6 +83,23 @@ impl BanList {
         removed
     }
 
+    /// 给定网络块，返回块内任意一条「有效封禁」的网络地址（排除 `ban_for_disconnect`）。供 AutoRangeBan。
+    ///
+    /// 语义：当前 peer 所在的 /N 段内，是否已有别的 IP 被规则封禁。
+    pub fn any_active_ban_in(&self, block: IpNetwork) -> Option<IpAddr> {
+        let guard = self.inner.read();
+        for (net, meta) in guard.iter() {
+            if meta.ban_for_disconnect {
+                continue;
+            }
+            let addr = net.network_address();
+            if block.contains(addr) {
+                return Some(addr);
+            }
+        }
+        None
+    }
+
     /// 全量快照 `(网络字符串, 元数据)`（供持久化与 AutoRangeBan 遍历）。
     pub fn snapshot(&self) -> Vec<(String, BanMetadata)> {
         self.inner

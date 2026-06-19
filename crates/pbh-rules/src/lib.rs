@@ -12,11 +12,15 @@
 //! 注：上游的 ExpressionRule（Aviator 脚本引擎，JVM 限定）已**完全移除**，不保留 trait 边界。
 
 pub mod cache;
+pub mod idle_dos;
 pub mod ip_matcher;
 pub mod matcher;
 pub mod module;
+pub mod multi_dialing;
 
 pub use cache::ModuleMatchCache;
+pub use idle_dos::{IdleConnectionDosProtection, ProtectMode};
 pub use ip_matcher::IpMatcher;
 pub use matcher::{MatchOutcome, Matcher, RuleParseError, RuleSet, StringRule};
 pub use module::{AntiVampire, ClientNameBlacklist, PeerIdBlacklist, RuleFeatureModule};
+pub use multi_dialing::MultiDialingBlocker;

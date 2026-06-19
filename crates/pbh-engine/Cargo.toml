@@ -13,6 +13,8 @@ pbh-storage = { path = "../pbh-storage" }
 ip_network = "0.4"
 ip_network_table = { workspace = true }
 parking_lot = { workspace = true }
+moka = { workspace = true, features = ["sync"] }
+hickory-resolver = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde_yaml = { workspace = true }

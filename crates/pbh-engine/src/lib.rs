@@ -8,10 +8,14 @@
 //!
 //! 注：AutoSTUN/NAT 已完全移除，peer 地址直接用下载器返回的原始 `ip:port`，不做 NAT 改写。
 
+pub mod auto_range_ban;
 pub mod ban_list;
 pub mod ban_manager;
 pub mod modules;
+pub mod ptr_blacklist;
 
+pub use auto_range_ban::AutoRangeBan;
 pub use ban_list::BanList;
 pub use ban_manager::{BanManager, StatsSnapshot};
 pub use modules::build_modules;
+pub use ptr_blacklist::PtrBlacklist;

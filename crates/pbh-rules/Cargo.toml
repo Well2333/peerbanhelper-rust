@@ -13,5 +13,6 @@ ipnet = { workspace = true }
 ip_network = "0.4"
 ip_network_table = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
+parking_lot = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

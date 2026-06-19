@@ -6,7 +6,12 @@
 use std::sync::Arc;
 
 use pbh_config::ProfileConfig;
-use pbh_rules::{AntiVampire, ClientNameBlacklist, PeerIdBlacklist, RuleFeatureModule, RuleSet};
+use pbh_rules::{
+    AntiVampire, ClientNameBlacklist, IdleConnectionDosProtection, MultiDialingBlocker,
+    PeerIdBlacklist, ProtectMode, RuleFeatureModule, RuleSet,
+};
+
+use crate::{AutoRangeBan, BanList, PtrBlacklist};
 
 /// 内置默认 PeerID 黑名单（常见离线下载/吸血客户端）。
 const DEFAULT_PEER_ID: &[&str] = &[
@@ -31,7 +36,17 @@ const DEFAULT_CLIENT_NAME: &[&str] = &[
 ];
 
 /// 按 profile 构建模块列表。
-pub fn build_modules(profile: &ProfileConfig, global_dur: i64) -> Vec<Arc<dyn RuleFeatureModule>> {
+///
+/// `ban_list` 供 AutoRangeBan 只读查询同段已封 IP。
+///
+/// 默认启用：peer-id / client-name / anti-vampire（精确、低误伤）。
+/// 默认**关闭**：auto-range-ban、multi-dialing-blocker、idle-connection-dos-protection、ptr-blacklist
+/// （会扩大封禁面或需联网，按需在 profile.yml 开启）。
+pub fn build_modules(
+    profile: &ProfileConfig,
+    global_dur: i64,
+    ban_list: &Arc<BanList>,
+) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();
 
     // peer-id-blacklist（默认启用）
@@ -75,7 +90,88 @@ pub fn build_modules(profile: &ProfileConfig, global_dur: i64) -> Vec<Arc<dyn Ru
         )));
     }
 
+    // auto-range-ban（默认关闭）
+    if enabled(profile, "auto-range-ban", false) {
+        let ipv4 = field_i64(profile, "auto-range-ban", "ipv4", 30).clamp(0, 32) as u8;
+        let ipv6 = field_i64(profile, "auto-range-ban", "ipv6", 48).clamp(0, 128) as u8;
+        out.push(Arc::new(AutoRangeBan::new(
+            ban_list.clone(),
+            ipv4,
+            ipv6,
+            dur(profile, "auto-range-ban", global_dur),
+        )));
+    }
+
+    // multi-dialing-blocker（默认关闭）
+    if enabled(profile, "multi-dialing-blocker", false) {
+        let m = "multi-dialing-blocker";
+        out.push(Arc::new(MultiDialingBlocker::new(
+            field_i64(profile, m, "subnet-mask-length", 24).clamp(0, 32) as u8,
+            field_i64(profile, m, "subnet-mask-v6-length", 56).clamp(0, 128) as u8,
+            field_i64(profile, m, "tolerate-num-ipv4", 2).max(1) as usize,
+            field_i64(profile, m, "tolerate-num-ipv6", 5).max(1) as usize,
+            field_i64(profile, m, "cache-lifespan", 86_400).max(1) as u64,
+            field_bool(profile, m, "keep-hunting", false),
+            field_i64(profile, m, "keep-hunting-time", 2_592_000).max(1) as u64,
+            dur(profile, m, global_dur),
+        )));
+    }
+
+    // idle-connection-dos-protection（默认关闭）
+    if enabled(profile, "idle-connection-dos-protection", false) {
+        let m = "idle-connection-dos-protection";
+        out.push(Arc::new(IdleConnectionDosProtection::new(
+            dur(profile, m, global_dur),
+            field_i64(profile, m, "max-allowed-idle-time", 300_000).max(0),
+            field_i64(profile, m, "idle-speed-threshold", 64).max(0),
+            field_f64(profile, m, "min-status-change-percentage", 0.001),
+            field_bool(profile, m, "reset-on-status-change", true),
+            ProtectMode::from_u8(field_i64(profile, m, "protect-mode", 0).clamp(0, 2) as u8),
+        )));
+    }
+
+    // ptr-blacklist（默认关闭，需联网 DNS）
+    if enabled(profile, "ptr-blacklist", false) {
+        let m = "ptr-blacklist";
+        let raw = string_list(profile, m, "ptr-rules").unwrap_or_default();
+        match RuleSet::parse(&raw) {
+            Ok(rs) => out.push(Arc::new(PtrBlacklist::new(
+                rs,
+                dur(profile, m, global_dur),
+                field_i64(profile, m, "cache-ttl", 3600).max(60) as u64,
+            ))),
+            Err(e) => tracing::warn!("ptr-blacklist 规则解析失败: {e}"),
+        }
+    }
+
     out
+}
+
+/// 读模块 section 下的整数字段（缺失/类型不符则用默认）。
+fn field_i64(profile: &ProfileConfig, module: &str, field: &str, default: i64) -> i64 {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get(field))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(default)
+}
+
+/// 读模块 section 下的浮点字段。
+fn field_f64(profile: &ProfileConfig, module: &str, field: &str, default: f64) -> f64 {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get(field))
+        .and_then(|v| v.as_f64())
+        .unwrap_or(default)
+}
+
+/// 读模块 section 下的布尔字段。
+fn field_bool(profile: &ProfileConfig, module: &str, field: &str, default: bool) -> bool {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get(field))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(default)
 }
 
 fn enabled(profile: &ProfileConfig, name: &str, default: bool) -> bool {

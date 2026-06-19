@@ -155,7 +155,7 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
     }
     // 重建规则模块（即时生效，无需重启）。
     let p = st.config.current().profile.clone();
-    let modules = pbh_engine::build_modules(&p, p.ban_duration);
+    let modules = pbh_engine::build_modules(&p, p.ban_duration, st.ban_manager.ban_list());
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
     ApiResp::ok(json!({ "modules": n })).into_response()

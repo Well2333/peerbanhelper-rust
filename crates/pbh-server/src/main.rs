@@ -67,9 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let downloaders = Arc::new(DownloaderManager::load(
         paths.config_file("downloaders.yml"),
     ));
-    let modules = build_modules(&profile, profile.ban_duration);
-    let module_count = modules.len();
     let ban_list = Arc::new(BanList::new());
+    let modules = build_modules(&profile, profile.ban_duration, &ban_list);
+    let module_count = modules.len();
     let ban_manager = BanManager::new(
         ban_list,
         downloaders.clone(),
