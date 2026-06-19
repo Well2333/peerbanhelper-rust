@@ -4,6 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# M2 引入 reqwest / serde / serde_json / ipnet。骨架 std-only：定义 trait 契约。
 [dependencies]
 pbh-domain = { path = "../pbh-domain" }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = "0.1"
+ipnet = { workspace = true }
+semver = "1"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }

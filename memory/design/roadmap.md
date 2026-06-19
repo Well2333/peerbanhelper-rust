@@ -60,10 +60,14 @@
 - ✅ **验收达成**：37 单测全绿(matcher 8 / ip_matcher 3 / cache 2 / ban_list 4 + M0)。
 - ⏭ 留待后续：PeerFlag 只解析模块实际用到的 interest 位(BTN 用原始串,无需全位重建);BanMetadata 的 serde/chrono 等到 M3(banlist 快照落库)再加。
 
-### M2 — 下载器（qB + qBEE）
-- `Downloader` trait（**v2 精简**：login / getTorrents / getPeers / setBanList / featureFlags / 并发槽;去掉 speed-limiter / BTProtocolPort / natTranslate 等与封禁无关项）+ 工厂表。
-- `QBittorrentClient`（reqwest + cookie SID + basic-auth + verify-ssl + UA + 并发信号量 128）;全端点;`BanHandler` Normal/ShadowBan;RANGE_BAN_IP 门控;IP 规范化;登录副作用 `enable_multi_connections_from_same_ip=false`。
-- **验收：** 对真实/录制 qB/EE 登录、拉 peer、封禁可见;封禁串逐字节对拍;EE shadowban。
+### M2 — 下载器（qB + qBEE）✅ 已完成（HTTP 部分待真机验证）
+- ✅ `Downloader` trait（v2 精简：login/get_torrents/get_peers/apply_ban_list/feature_flags/is_paused）+ `build_downloader` 工厂。
+- ✅ `QBittorrentClient`（reqwest：cookie SID + basic-auth + api-key Bearer + verify-ssl + gzip + UA）;
+  登录(密码/api-key 双模式 + EE shadowban test + 多连接副作用);分页 torrents;`/sync/torrentPeers` peer 解析与过滤;
+  封禁全量(`banned_IPs`/`shadow_banned_IPs`)与增量(`banPeers`/`shadowbanPeers`);RANGE_BAN 版本门控;IP 规范化。
+- ✅ **纯逻辑验收**：9 单测(封禁串全量/增量/CIDR 门控/IPv6 压缩、config 往返、版本解析、peer JSON、工厂)。
+- ⏳ **待真机验证**（记入待测报告）：对真实 qB/EE 登录、拉 peer、封禁写入可见;封禁串与上游逐字节对拍。
+- ⏭ completed_size 暂为 -1（M5 PCB 经 `/torrents/properties` 补）;DownloaderManager(持久化/列表)在 M3 装配。
 
 ### M3 — 流水线 + 调度 + BanManager
 - bounded `mpsc`(64) channel 流水线（provider→login→torrents→peers→snapshot→check），每 peer 并发检查 + 非线程安全模块串行化，每阶段 timeout。
