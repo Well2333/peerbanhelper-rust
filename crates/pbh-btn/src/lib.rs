@@ -1,7 +1,7 @@
 //! pbh-btn —— BTN 云端威胁情报网络（用户要求全部保留）。
 //!
 //! 对应 Java `btn/**`、`module/impl/rule/BtnNetworkOnline.java`、`util/pow/**`。
-//! 协议细节见 `docs/01-research-report.md` §2.4。
+//! 协议细节见 `docs/01-architecture-analysis.md` §2.4。
 //!
 //! M8 实现：
 //! - HTTP 中间件（固定头 + Bearer + gzip 上行）、config 端点拉取、new/legacy 分支

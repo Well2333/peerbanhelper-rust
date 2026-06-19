@@ -25,7 +25,7 @@ fn main() {
         "  默认监听: {}:{}  | ban-wave 间隔: {}ms | 默认封禁: {}ms",
         app.server_address, app.server_http, profile.check_interval_ms, profile.ban_duration_ms
     );
-    println!("  下一步: 按 docs/05-revised-strategy.md（v2 极简重构）从 M0 开始实现。");
+    println!("  下一步: 按 docs/02-strategy-and-roadmap.md（v2 极简重构）从 M0 开始实现。");
 
     // 触达各子系统公共符号，确保骨架可链接（不构成运行逻辑）。
     let _ = pbh_btn::PROTOCOL_READABLE_VERSION;

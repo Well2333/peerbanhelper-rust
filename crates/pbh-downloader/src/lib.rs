@@ -1,7 +1,7 @@
 //! pbh-downloader —— 下载器抽象 + qBittorrent / qBittorrentEE。
 //!
 //! 对应 Java `downloader/**`。本期仅 qB + qBEE，但 **保留 trait + 工厂注册以维持可扩展性**
-//! （守则第 9 条：依赖抽象）。协议细节见 `docs/01-research-report.md` §2.2，必须字节级一致。
+//! （守则第 9 条：依赖抽象）。协议细节见 `docs/01-architecture-analysis.md` §2.2，必须字节级一致。
 //!
 //! M2 实现：
 //! - `Downloader` trait（登录/拉 torrents/拉 peers/封禁/统计/限速/端口/特性标志）

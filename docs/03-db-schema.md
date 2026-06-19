@@ -1,13 +1,12 @@
-# PeerBanHelper-Rust 数据库 Schema（嵌入式 SQLite）
+# PeerBanHelper-Rust 数据库 Schema（嵌入式 SQLite · v2 精简表集）
 
-> **v2 精简表集（见 docs/05）：** 保留 `pcb_address`、`pcb_range`、`banlist`、`history`、
-> `rule_sub_info`、`rule_sub_log`、`metadata`、`peer_records`、`tracked_swarm`(后两者供 BTN 上行)。
-> **砍除** `traffic_journal_v3`、`peer_connection_metrics`、`peer_connection_metrics_track`、`alert`
-> (纯图表/降级为日志)。下表完整列出全部表以备查;打 🔻 者为 v2 砍除。
+> 本文件只列 **v2 实际保留的表**。已砍除的纯图表/告警表（`traffic_journal_v3`、
+> `peer_connection_metrics(+track)`、`alert`，详见 `02-strategy-and-roadmap.md` §3）不再收录。
+> 上游完整 14 表结构如需查阅见 `source/.../databasent/` 与 `resources/db/migration/sqlite/`。
 
-> 来源：`resources/db/migration/sqlite/V1_1..V1_5` + `databasent/table/*Entity.java` + `mapper/sqlite/*.xml`。
-> Rust 端：单文件 `<dataDir>/persist/peerbanhelper-nt.db`，WAL，`busy_timeout=60000`，写池单连接。迁移用 `sqlx::migrate!` 单个**合并版** `V1__initial.sql`（反映 V1_5 后的最终形态）。
-> 约定：时间戳 = `INTEGER`(epoch millis)；IP/Inet = `TEXT`(规范串)；JSON/TranslationComponent = `TEXT`(serde_json)；bool = `INTEGER`(0/1)；枚举 = `TEXT`。
+> Rust 端：单文件 `<dataDir>/persist/peerbanhelper-nt.db`，WAL，`busy_timeout=60000`，写池单连接。迁移用 `sqlx::migrate!` 单个**合并版** `V1__initial.sql`。
+> 约定：时间戳 = `INTEGER`(epoch millis)；IP/Inet = `TEXT`(规范串)；JSON = `TEXT`(serde_json)；bool = `INTEGER`(0/1)；枚举 = `TEXT`。
+> 注：v2 已砍 i18n，原 `TranslationComponent` 字段（如 history.rule_name/description）改存**纯字符串**。
 
 ## 连接 pragma（连接时设置）
 ```
@@ -38,26 +37,11 @@ PK `id`。`address` TEXT, `port` INT, `torrent_id` INT, `downloader` TEXT, `peer
 唯一：**`(address, torrent_id, downloader)`**（V1_3 去掉了 port）。索引：`address`,`(last_time_seen)`,`(downloader,uploaded,downloaded,first_time_seen,last_time_seen)`,`(downloader,first_time_seen,last_time_seen)`。
 > upsert 含带 offset 的单调累加冲突解决（最难单条 SQL，见下）。
 
-### 🔻 peer_connection_metrics — 连接指标（聚合）【v2 砍除】
-PK `id`。`timeframe_at` INT, `downloader` TEXT + 16 个 INT 计数器：`total_connections, incoming_connections, remote_refuse_transfer_to_client, remote_accept_transfer_to_client, local_refuse_transfer_to_peer, local_accept_transfer_to_peer, local_not_interested, question_status, optimistic_unchoke, from_dht, from_pex, from_lsd, from_tracker_or_other, rc4_encrypted, plain_text_encrypted, utp_socket, tcp_socket`。
-唯一：`(timeframe_at, downloader)`。
-
-### 🔻 peer_connection_metrics_track — 连接指标（逐 peer）【v2 砍除】
-PK `id`。`timeframe_at` INT, `downloader` TEXT, `torrent_id` INT, `address` TEXT, `port` INT, `peer_id` TEXT?(V1_4 改可空), `client_name` TEXT?, `last_flags` TEXT?。
-唯一：`(timeframe_at, downloader, torrent_id, address, port)`。
-
-### 🔻 traffic_journal_v3 — 流量账（小时分桶）【v2 砍除】
-PK `id`。`timestamp` INT(小时桶), `downloader` TEXT + 8 个 INT：`data_overall_uploaded_at_start, data_overall_uploaded, data_overall_downloaded_at_start, data_overall_downloaded, protocol_overall_uploaded_at_start, protocol_overall_uploaded, protocol_overall_downloaded_at_start, protocol_overall_downloaded`。
-唯一：`(timestamp, downloader)`。
-
 ### rule_sub_info — 订阅规则信息
 PK `rule_id` TEXT（调用方提供）。`enabled` INT(bool), `rule_name` TEXT, `sub_url` TEXT, `last_update` INT?, `ent_count` INT?。索引：`(rule_id)`。
 
 ### rule_sub_log — 订阅更新日志
 PK `id`。`rule_id` TEXT, `update_time` INT, `count` INT, `update_type` TEXT(枚举 AUTO/MANUAL)。索引：`(rule_id, update_time DESC)`。
-
-### 🔻 alert — 告警【v2 砍除,降级为日志】
-PK `id`。`create_at` INT, `read_at` INT?, `level` TEXT(INFO/WARN/ERROR/FATAL), `identifier` TEXT, `title` TEXT(JSON), `content` TEXT(JSON)。索引：`(read_at,identifier)`,`(read_at)`,`(create_at,read_at)`。
 
 ### torrents — 种子
 PK `id`。`info_hash` TEXT, `name` TEXT, `size` INT, `private_torrent` INT?(bool)。唯一：`(info_hash)`。索引：`name`,`private_torrent`。
@@ -70,18 +54,15 @@ PK `k` TEXT。`v` TEXT?。键：`btn.submithistory.timestamp`, `BtnAbilitySubmit
 PK `id`。`ip` TEXT, `port` INT, `info_hash` TEXT, `torrent_is_private` INT, `torrent_size` INT, `downloader` TEXT, `downloader_progress` REAL, `peer_id` TEXT?, `client_name` TEXT?, `peer_progress` REAL(*注：原 DDL 误写 TEXT，Rust 用 REAL*), `uploaded` INT, `uploaded_offset` INT, `upload_speed` INT, `downloaded` INT, `downloaded_offset` INT, `download_speed` INT, `last_flags` TEXT?, `first_time_seen` INT, `last_time_seen` INT, `download_speed_max` INT, `upload_speed_max` INT。
 唯一：`(ip, port, info_hash, downloader)`。索引：`(last_time_seen DESC)`。
 
-## 需手工移植的关键 SQL（驱动仪表盘）
+## 需手工移植的关键 SQL（v2 精简）
 
-> 所有 `${field}`/`${orderBy}` **必须做枚举白名单映射到固定列**，绝不拼接用户输入。
+v2 砍掉了图表/统计分析,故原 `sumField`/`countField`/`getBannedIps`/`queryClientAnalyse`/`traffic_journal 聚合`/`torrents.search` 等分析查询**均不移植**。v2 实际需要的非平凡 SQL 只有几条 upsert：
 
-1. **peer_records upsert（最难）：** `ON CONFLICT(address,torrent_id,downloader) DO UPDATE`，按时间戳 last-write-wins + 带 offset 的单调流量累加（`uploaded = peer.uploaded + excluded.uploaded - offset`，clamp）。逐 CASE 照搬。
-2. **history `sumField`/`countField`：** CTE(`filtered_data` 可选 `SUBSTR`)→`total_sum`→percent=`CAST(.. AS REAL)/total`→`HAVING percent > ?`→`ORDER BY count DESC`，可选 `JOIN torrents`。
-3. **history `getBannedIps`：** `SELECT ip, COUNT(*) ... [WHERE ip LIKE ?||'%'] GROUP BY ip ORDER BY count DESC`（分页）。
-4. **peer_records `queryClientAnalyse`：** `GROUP BY peer_id, client_name`，SUM 上下行 + COUNT，`first_time_seen>=? AND last_time_seen<=? AND uploaded>0 AND downloaded>0`，动态 `ORDER BY`（白名单）。
-5. **traffic_journal 聚合：** `GROUP BY timestamp`（已是小时桶整数），逐行 `MAX(0, x - x_at_start)`。
-6. **torrents.search：** `ORDER BY (SELECT COUNT(*) FROM history|peer_records WHERE torrent_id = torrents.id)`（子查询表白名单）。
+1. **peer_records upsert（最难,供 BTN 上行）：** `ON CONFLICT(address,torrent_id,downloader) DO UPDATE`，按时间戳 last-write-wins + 带 offset 的单调流量累加（`uploaded = peer.uploaded + excluded.uploaded - offset`，clamp）。逐 CASE 照搬。
+2. **tracked_swarm upsert（供 BTN 上行）** 与 **torrents upsert**（`ON CONFLICT(info_hash)` 保留更大 size / 非空 private）。
+3. **pcb_address / pcb_range upsert**（按唯一键更新分析列,见 M5）。
 
-> **注意：** 服务于被删 PBH_PLUS 图表的查询（sessionAnalyse/clientAnalyse 等）本期可不移植；`/api/statistic/*`（counter/field/date/banTrends）保留。
+其余为平凡 CRUD：history 插入 + `/api/bans/history` 分页查询、banlist 全表 save/load、rule_sub 增改查、metadata KV。所有动态排序/过滤字段须**枚举白名单**,绝不拼接用户输入。
 
 ## 不做的事
 - 不支持 MySQL/PostgreSQL/H2（删方言分支）。

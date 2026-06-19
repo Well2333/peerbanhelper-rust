@@ -1,7 +1,7 @@
 //! pbh-storage —— 嵌入式 SQLite 持久化层。对应 Java `databasent/**`。
 //!
 //! **零额外部署依赖**：单文件 `<dataDir>/persist/peerbanhelper-nt.db`，WAL，单写者。
-//! 表结构与关键 SQL 见 `docs/04-db-schema.md`。
+//! 表结构与关键 SQL 见 `docs/03-db-schema.md`。
 //!
 //! M0：连接 + pragma + `sqlx::migrate!`(合并版 V1) + KV(metadata)。
 //! M5：pcb_address / pcb_range（脏刷缓存）。M6：rule_sub_log。M8：history/tracked_swarm 游标。

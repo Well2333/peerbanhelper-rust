@@ -2,18 +2,18 @@
 
 [PeerBanHelper](https://github.com/PBH-BTN/PeerBanHelper)（Java）的 **完全重构、最精简** Rust 重写：**单文件原生二进制、零额外部署依赖**（内置嵌入式 SQLite）、达到与原版**一致的封禁效果**。保留完整封禁能力（全部高价值规则 + 完整 BTN 云端网络 + 封禁历史），**弃用原 Vue 前端**，改为自研极简 REST API + 内置轻量单页。
 
-> 状态：**骨架阶段（M0 前）**。当前包含预研报告、修订战略与 Cargo workspace 骨架，业务逻辑待按 `docs/05-revised-strategy.md` 实现。
->
-> **权威方案：`docs/05-revised-strategy.md`（v2 极简重构）。** docs/02、docs/03 为 v1 忠实移植方案，已被取代，仅作参考。
+> 状态：**骨架阶段（M0 前）**。当前包含分析、战略与 Cargo workspace 骨架，业务逻辑待按 `docs/02-strategy-and-roadmap.md` 实现。
 
-## 文档
+## 文档（按阅读顺序）
 
 | 文件 | 内容 |
 |---|---|
-| `docs/01-research-report.md` | 预研与架构报告（系统总览、子系统分析、技术选型、风险） |
-| `docs/02-construction-guide.md` | 施工指南（M0–M10 里程碑、任务拆解、验收标准、对拍策略） |
-| `docs/03-api-contract.md` | 前端复用基准：完整 REST/WS 端点契约 |
-| `docs/04-db-schema.md` | 嵌入式 SQLite 表结构与关键 SQL |
+| `docs/最高优先级工作守则.md` | **流程总纲（最高优先级）**：仓库记忆、分支/提交、验证 |
+| `docs/02-strategy-and-roadmap.md` | **权威方案**：v2 战略、范围(保留/砍除)、自研 API、M0–M9 里程碑与验收、对拍策略 |
+| `docs/01-architecture-analysis.md` | 上游系统与子系统的事实分析（建库时查源码基准用） |
+| `docs/03-db-schema.md` | 嵌入式 SQLite 表结构（v2 精简表集）与关键 SQL |
+
+> 长期规范沉淀在 `memory/guidelines/`，变更记录在 `memory/changelog/`。
 
 ## Crate 分层
 
@@ -37,7 +37,7 @@
 
 ## 前端（自研极简）
 
-弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `docs/05-revised-strategy.md` §4。
+弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `docs/02-strategy-and-roadmap.md` §4。
 
 ## 开发
 
