@@ -229,6 +229,10 @@
       <textarea id="profileYaml" rows="22" spellcheck="false"></textarea>
       <div id="ruleMsg" class="mut" style="margin-top:9px"></div>
     </div>
+    <div class="card">
+      <h3>🌐 IP 黑名单订阅 <span class="mut" style="font-weight:400;font-size:12px">（在上方 YAML 的 <code>module.ip-address-blocker-rules</code> 配置）</span></h3>
+      <table><thead><tr><th>规则ID</th><th>名称</th><th>条数</th><th>最后更新</th><th>状态</th></tr></thead><tbody id="subBody"></tbody></table>
+    </div>
   </section>
 
   <!-- 日志 -->
@@ -445,6 +449,18 @@ async function loadHistory(){
 async function loadProfile(){
   const j=await api('/api/config/profile');
   if(j.ok){ el('profileYaml').value=j.data.yaml; el('ruleMsg').textContent=''; }
+  loadSubs();
+}
+async function loadSubs(){
+  try{ const j=await api('/api/sub/rules'); const tb=el('subBody'); tb.innerHTML='';
+    const rows=j.data||[];
+    if(!rows.length){ tb.innerHTML='<tr><td colspan="5" class="mut" style="text-align:center;padding:14px">暂无订阅。在上方 YAML 配置 ip-address-blocker-rules.rules 并保存即开始下载。</td></tr>'; return; }
+    rows.forEach(r=>{ const tr=document.createElement('tr');
+      tr.innerHTML=`<td><span class="pill gray">${esc(r.rule_id)}</span></td><td>${esc(r.rule_name)}</td>
+        <td><b>${num(r.ent_count)}</b></td><td class="mut">${fmt(r.last_update)}</td>
+        <td>${r.enabled?'<span class="pill green">启用</span>':'<span class="pill gray">停用</span>'}</td>`;
+      tb.appendChild(tr); });
+  }catch(e){}
 }
 async function saveProfile(){
   el('ruleMsg').textContent='保存中…';

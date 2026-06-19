@@ -77,19 +77,21 @@
 - ✅ **验收达成**：49 单测全绿;二进制实跑(0 下载器 3 模块,wave 启动/退出正常)。
 - ⏭ 留待后续：channel 并行流水线 + WatchDog + 每小时快照(首版顺序执行,够用);真实 qB 封禁端到端见待测报告。
 
-### M4 — 规则模块（离线）⏳ 进行中（3/7 已落地）
+### M4 — 规则模块（离线）✅ 已完成（7/7）
 - ✅ PeerIdBlacklist、ClientNameBlacklist、AntiVampire（含内置默认名单,开箱即用）。
-- ⏭ 待补：AutoRangeBan（依赖 BanList,放 pbh-engine）、IdleConnectionDosProtection、MultiDialingBlocker、PTRBlacklist。
-- **验收：** 每模块单测覆盖阈值与配置。
+- ✅ AutoRangeBan（pbh-engine,读 BanList）、IdleConnectionDosProtection（moka TTI）、MultiDialingBlocker（moka 段计数+追猎）、PTRBlacklist（hickory 后台异步预解析+同步查缓存）。后 4 个默认关闭。
+- ✅ **验收达成：** 每模块单测覆盖阈值与配置;真机冒烟构建 4 模块无崩溃。见 `changelog/2026-06-20-4e554c1.md`。
 
-### M5 — ProgressCheatBlocker
-- `pcb_address`+`pcb_range` 两表、脏标志 + `moka` LRU(1024/180s) + 驱逐批刷;`shouldBanPeer` 精确短路顺序（上传增量→computedUploaded=max→fastPcbTest→excessive→difference(ban-delay 窗口)→rewind）;8h 清理;订阅解封事件。
-- **验收：** 专项序列回放套件逐子检查对拍;持久化重启续算;ban-delay 状态机;解封重置。
+### M5 — ProgressCheatBlocker ✅ 已完成
+- ✅ `pcb_address`+`pcb_range` 两表、脏标志 + moka 缓存 + 60s 批刷;`evaluate` 精确短路（上传增量→computedUploaded=max→fastPcbTest→excessive→difference(ban-delay 窗口)→rewind）;8h 清理;解封重置（on_unban 钩子）。
+- ✅ **验收达成：** 序列回放套件逐子检查;持久化重启续算（真机载入 29 条）;ban-delay 状态机;默认启用。见 `changelog/2026-06-20-c585194.md`+`4fad1ff.md`。
+- ⏭ 留待：`completed_size`（excessive Case2,需下载器 `/torrents/properties`）;cache key 未含 downloader（单下载器简化）。
 
-### M6 — GeoIP + IP 黑名单族
-- `maxminddb` 读 City/ASN/GeoCN + 下载/解压/原子替换 + GeoCN 解析 + 行政区划 trie + `IpGeoData` + 叠加 + TW/HK/MO 命名 + moka;**可选注入**(缺失则降级)。
-- IPBlackList、IPBlackRuleList（下载/SHA-256/格式解析/前缀 trie/`rule_sub_log`/定时刷新/磁盘回退）。
-- **验收：** GeoIP 对已知 IP 对拍;订阅格式解析单测;trie 命中;更新日志入库。
+### M6 — GeoIP + IP 黑名单族 ✅ 已完成
+- ✅ `maxminddb` 读 City/ASN + `IpGeoData` + `load_from_dir`;**可选注入**(无 mmdb 则降级)。GeoCN/行政区划未移植（无数据）。
+- ✅ IPBlackList（ip/port + GeoIP-gated asn/region/city/net-type）、IPBlackRuleList（下载/eMule-DAT·CIDR·纯IP 解析/前缀 trie/`rule_sub_log`/定时刷新）。
+- ✅ **验收达成：** 订阅格式解析单测;真机 trie 命中（628 条/24 peer）;更新日志入库。见 `changelog/2026-06-20-151a035.md`+`2b6fde9.md`。
+- ⏭ 留待：磁盘缓存回退、SHA-256 增量、GeoCN、history.peer_geoip 回填。
 
 ### M7 — 极简 Web（自研）✅ 已完成（首版）
 - ✅ `axum`：`ApiResp{ok,data,error}` 信封、分页、Bearer 鉴权中间件（公开 `/`、`/api/auth/login`）。
@@ -100,9 +102,10 @@
 
 > 🎉 **至此为可在浏览器测试的成品**：运行二进制 → 浏览器登录 → 添加 qB → 自动封禁 + 查看。真实 qB 封禁端到端仍待用户用自己的 qB 验证（见待测报告）。
 
-### M8 — BTN（完整）
-- HTTP 中间件（固定头 + Bearer + gzip 上行）、config 拉取、new/legacy 分支;下行 HeartBeat/Rules/IPDenyList/IPAllowList(+解封)/IpQuery/Reconfigure;上行 SubmitBans/SubmitSwarm/SubmitHistory（DB 游标 + KV 续传）;轻量 PeerRecording/SwarmTracking 喂数据;PoW;`BtnNetworkOnline`（Allow→SKIP / Deny→BAN / Rules 分类，**无脚本分支**）;每 ability tokio 任务;600s 重试。
-- **验收：** config/规则下行/心跳/IP 名单;上行 gzip 报文字段对拍;游标续传;PoW 通过。
+### M8 — BTN ✅ 已完成（核心；真机对拍待用户凭证）
+- ✅ HTTP 中间件（固定头 + Bearer + 匿名 InstallationID + gzip 上行）、config 拉取、legacy 判定;下行 Rules(`?rev=`/204)/IPDenyList/IPAllowList（ContentVersion）;上行 SubmitBans（history.id 游标 + KV 续传 + gzip）;PoW 求解;种子隐私哈希;`BtnNetworkOnline`（Allow→SKIP / Deny→BAN / Rules peer_id·client_name·ip·port→BAN，无脚本分支）;BtnManager 调度 + 600s 重试。默认关闭。
+- ✅ **验收（单测+冒烟）：** 85 单测含 BTN 13（PoW/哈希/序列化/规则应用）;真机启用冒烟（modules+1、config 失败优雅重试、无崩溃）。见 `changelog/2026-06-20-553be67.md`。
+- ⏭ 留待（需用户 BTN 账号）：真实服务端字节级对拍;submit_swarm/history 上行（需 PeerRecording/SwarmTracking 采集）;PoW 自动获取挑战;legacy(<20) 分支。
 
 ### M9 — 收尾
 - 单文件打包（`rust-embed` 内嵌单页）、配置随包、端到端验收、性能基线、文档。
