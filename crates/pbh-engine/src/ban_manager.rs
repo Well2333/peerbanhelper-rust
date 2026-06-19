@@ -2,8 +2,9 @@
 //!
 //! 一轮 wave：移除到期封禁 → 对每个下载器(登录→拉 torrents→拉 peers→逐 peer 跑模块→命中即封) → 下发封禁列表。
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use std::net::IpAddr;
@@ -17,17 +18,50 @@ use crate::BanList;
 
 static BAN_SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// 运行期累计统计（仪表盘用）。原子计数，进程生命周期内累加。
+#[derive(Default)]
+pub struct Stats {
+    /// 累计检查过的 peer 次数。
+    pub checked_peers: AtomicU64,
+    /// 累计封禁次数。
+    pub banned_peers: AtomicU64,
+    /// 累计（到期）解封次数。
+    pub unbanned_peers: AtomicU64,
+    /// 完成的 ban wave 轮数。
+    pub waves: AtomicU64,
+    /// 上一轮 wave 完成时刻（epoch ms）。
+    pub last_wave_at: AtomicU64,
+    /// 上一轮 wave 耗时（ms）。
+    pub last_wave_ms: AtomicU64,
+}
+
+/// 统计快照（可序列化给前端）。
+#[derive(Debug, Clone, Default)]
+pub struct StatsSnapshot {
+    pub checked_peers: u64,
+    pub banned_peers: u64,
+    pub unbanned_peers: u64,
+    pub waves: u64,
+    pub last_wave_at: u64,
+    pub last_wave_ms: u64,
+}
+
 /// 封禁管理 + ban wave 执行。
 pub struct BanManager {
     ban_list: Arc<BanList>,
     downloaders: Arc<DownloaderManager>,
-    modules: Vec<Arc<dyn RuleFeatureModule>>,
+    /// 启用的规则模块。`RwLock` 以支持配置热重载（PUT /api/config/profile 后重建）。
+    modules: RwLock<Vec<Arc<dyn RuleFeatureModule>>>,
     db: Db,
     global_ban_duration: i64,
     /// 旁路名单（这些地址来的 peer 不检查）。
     ignore: IpMatcher<()>,
     /// 防止 wave 重叠。
     running: AtomicBool,
+    /// 运行统计。
+    stats: Stats,
+    /// 每个下载器上轮登录是否成功（id → ok）。
+    login_status: RwLock<HashMap<String, bool>>,
 }
 
 /// run_once 的重叠保护 RAII：退出时清标志。持有 `&AtomicBool`（Send），可跨 await。
@@ -54,11 +88,13 @@ impl BanManager {
         Arc::new(BanManager {
             ban_list,
             downloaders,
-            modules,
+            modules: RwLock::new(modules),
             db,
             global_ban_duration,
             ignore,
             running: AtomicBool::new(false),
+            stats: Stats::default(),
+            login_status: RwLock::new(HashMap::new()),
         })
     }
 
@@ -68,6 +104,34 @@ impl BanManager {
 
     pub fn global_ban_duration(&self) -> i64 {
         self.global_ban_duration
+    }
+
+    /// 当前统计快照（仪表盘用）。
+    pub fn stats(&self) -> StatsSnapshot {
+        let s = &self.stats;
+        StatsSnapshot {
+            checked_peers: s.checked_peers.load(Ordering::Relaxed),
+            banned_peers: s.banned_peers.load(Ordering::Relaxed),
+            unbanned_peers: s.unbanned_peers.load(Ordering::Relaxed),
+            waves: s.waves.load(Ordering::Relaxed),
+            last_wave_at: s.last_wave_at.load(Ordering::Relaxed),
+            last_wave_ms: s.last_wave_ms.load(Ordering::Relaxed),
+        }
+    }
+
+    /// 每个下载器上轮登录状态（id → 是否成功）。
+    pub fn downloader_status(&self) -> HashMap<String, bool> {
+        self.login_status.read().unwrap().clone()
+    }
+
+    /// 启用的模块数量。
+    pub fn module_count(&self) -> usize {
+        self.modules.read().unwrap().len()
+    }
+
+    /// 热重载：用新规则集替换当前模块（PUT /api/config/profile 后调用）。
+    pub fn rebuild_modules(&self, modules: Vec<Arc<dyn RuleFeatureModule>>) {
+        *self.modules.write().unwrap() = modules;
     }
 
     /// 手动封禁单个 IP。下次 wave 下发到下载器。
@@ -104,7 +168,8 @@ impl BanManager {
     /// 对单个 peer 跑所有模块，合并结果（Skip 短路）。
     fn run_modules(&self, torrent: &Torrent, peer: &Peer) -> CheckResult {
         let mut result = CheckResult::pass("none");
-        for m in &self.modules {
+        let modules = self.modules.read().unwrap();
+        for m in modules.iter() {
             let r = m.should_ban(torrent, peer);
             result = result.merge(r);
             if result.action == PeerAction::Skip {
@@ -125,10 +190,14 @@ impl BanManager {
             return;
         }
         let _guard = WaveGuard(&self.running);
-        let now = now_ms();
+        let wave_start = now_ms();
+        let now = wave_start;
         let expired = self.ban_list.remove_expired(now);
         if !expired.is_empty() {
             tracing::info!("解封 {} 个到期封禁", expired.len());
+            self.stats
+                .unbanned_peers
+                .fetch_add(expired.len() as u64, Ordering::Relaxed);
         }
 
         let downloaders = self.downloaders.list();
@@ -137,13 +206,26 @@ impl BanManager {
                 continue;
             }
             match d.login().await {
-                Ok(o) if o.success => {}
+                Ok(o) if o.success => {
+                    self.login_status
+                        .write()
+                        .unwrap()
+                        .insert(d.id().to_string(), true);
+                }
                 Ok(o) => {
                     tracing::warn!(downloader = d.name(), "登录失败: {}", o.message);
+                    self.login_status
+                        .write()
+                        .unwrap()
+                        .insert(d.id().to_string(), false);
                     continue;
                 }
                 Err(e) => {
                     tracing::warn!(downloader = d.name(), "登录错误: {e}");
+                    self.login_status
+                        .write()
+                        .unwrap()
+                        .insert(d.id().to_string(), false);
                     continue;
                 }
             }
@@ -167,6 +249,7 @@ impl BanManager {
                     if self.ignore.contains(p.address.ip) || self.ban_list.contains(p.address.ip) {
                         continue;
                     }
+                    self.stats.checked_peers.fetch_add(1, Ordering::Relaxed);
                     let r = self.run_modules(t, p);
                     if matches!(r.action, PeerAction::Ban | PeerAction::BanForDisconnect) {
                         self.record_ban(d.id(), t, p, &r, now, &mut newly).await;
@@ -185,6 +268,13 @@ impl BanManager {
                 tracing::warn!(downloader = d.name(), "下发封禁失败: {e}");
             }
         }
+
+        let elapsed = now_ms().saturating_sub(wave_start).max(0) as u64;
+        self.stats.waves.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .last_wave_at
+            .store(wave_start as u64, Ordering::Relaxed);
+        self.stats.last_wave_ms.store(elapsed, Ordering::Relaxed);
     }
 
     async fn record_ban(
@@ -216,6 +306,7 @@ impl BanManager {
         if !self.ban_list.ban(&p.address.ip.to_string(), meta) {
             return;
         }
+        self.stats.banned_peers.fetch_add(1, Ordering::Relaxed);
         newly.push(p.address.raw_ip.clone());
         tracing::info!(
             module = r.module,

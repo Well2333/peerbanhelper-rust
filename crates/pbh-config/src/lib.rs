@@ -70,6 +70,26 @@ pub fn save_app(paths: &Paths, app: &AppConfig) -> Result<(), ConfigError> {
     })
 }
 
+/// 把 `ProfileConfig` 写回 `profile.yml`（Web 端编辑规则后持久化）。
+pub fn save_profile(paths: &Paths, profile: &ProfileConfig) -> Result<(), ConfigError> {
+    let path = paths.config_file("profile.yml");
+    let path_str = path.display().to_string();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| ConfigError::Io {
+            path: path_str.clone(),
+            source,
+        })?;
+    }
+    let yaml = serde_yaml::to_string(profile).map_err(|source| ConfigError::Parse {
+        path: path_str.clone(),
+        source,
+    })?;
+    std::fs::write(&path, yaml).map_err(|source| ConfigError::Io {
+        path: path_str,
+        source,
+    })
+}
+
 /// 可热重载的配置句柄：持有 `watch` 通道，组件订阅 `subscribe()` 获取变更。
 #[derive(Debug, Clone)]
 pub struct ConfigHandle {
@@ -102,6 +122,18 @@ impl ConfigHandle {
         self.tx.send_replace(cfg);
         tracing::info!("配置已热重载");
         Ok(())
+    }
+
+    /// 保存 `profile.yml` 并热重载（Web 编辑规则后调用）。
+    pub fn save_profile(&self, profile: &ProfileConfig) -> Result<(), ConfigError> {
+        save_profile(&self.paths, profile)?;
+        self.reload()
+    }
+
+    /// 保存 `config.yml` 并热重载。
+    pub fn save_app(&self, app: &AppConfig) -> Result<(), ConfigError> {
+        save_app(&self.paths, app)?;
+        self.reload()
     }
 }
 

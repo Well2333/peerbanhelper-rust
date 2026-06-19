@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::{ApiResp, Page, WebState};
+use pbh_config::ProfileConfig;
 use pbh_downloader::DownloaderConfig;
 
 /// 组装路由。`/` 与 `/api/auth/login` 公开，其余 `/api/*` 需 Bearer token。
@@ -27,6 +28,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/bans", get(list_bans).put(add_ban))
         .route("/api/bans/{ip}", delete(remove_ban))
         .route("/api/bans/history", get(ban_history))
+        .route("/api/config/profile", get(get_profile).put(put_profile))
         .route("/api/logs", get(get_logs))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
@@ -89,14 +91,74 @@ async fn login(State(st): State<WebState>, Json(b): Json<LoginBody>) -> Response
 
 async fn status(State(st): State<WebState>) -> Response {
     let cfg = st.config.current();
+    let s = st.ban_manager.stats();
+    let login = st.ban_manager.downloader_status();
+    let downloader_list: Vec<_> = st
+        .downloaders
+        .configs()
+        .into_iter()
+        .map(|c| {
+            json!({
+                "id": c.id,
+                "name": c.name,
+                "type": c.kind,
+                "endpoint": c.endpoint,
+                "paused": c.paused,
+                "online": login.get(&c.id).copied(),
+            })
+        })
+        .collect();
     ApiResp::ok(json!({
         "version": env!("CARGO_PKG_VERSION"),
         "downloaders": st.downloaders.count(),
+        "modules": st.ban_manager.module_count(),
         "banned": st.ban_manager.ban_list().len(),
         "check_interval": cfg.profile.check_interval,
         "ban_duration": cfg.profile.ban_duration,
+        "stats": {
+            "checked_peers": s.checked_peers,
+            "banned_peers": s.banned_peers,
+            "unbanned_peers": s.unbanned_peers,
+            "waves": s.waves,
+            "last_wave_at": s.last_wave_at,
+            "last_wave_ms": s.last_wave_ms,
+        },
+        "downloader_list": downloader_list,
     }))
     .into_response()
+}
+
+// ---------------- 规则配置（profile.yml）----------------
+
+async fn get_profile(State(st): State<WebState>) -> Response {
+    let profile = st.config.current().profile.clone();
+    match serde_yaml::to_string(&profile) {
+        Ok(yaml) => ApiResp::ok(json!({ "yaml": yaml })).into_response(),
+        Err(e) => bad_request(format!("序列化 profile 失败: {e}")),
+    }
+}
+
+#[derive(Deserialize)]
+struct ProfileBody {
+    yaml: String,
+}
+
+async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> Response {
+    // 解析校验。
+    let profile: ProfileConfig = match serde_yaml::from_str(&b.yaml) {
+        Ok(p) => p,
+        Err(e) => return bad_request(format!("YAML 解析失败: {e}")),
+    };
+    // 写盘 + 热重载配置。
+    if let Err(e) = st.config.save_profile(&profile) {
+        return bad_request(format!("保存失败: {e}"));
+    }
+    // 重建规则模块（即时生效，无需重启）。
+    let p = st.config.current().profile.clone();
+    let modules = pbh_engine::build_modules(&p, p.ban_duration);
+    let n = modules.len();
+    st.ban_manager.rebuild_modules(modules);
+    ApiResp::ok(json!({ "modules": n })).into_response()
 }
 
 async fn list_downloaders(State(st): State<WebState>) -> Response {

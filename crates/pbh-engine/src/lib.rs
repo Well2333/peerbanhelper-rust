@@ -13,5 +13,5 @@ pub mod ban_manager;
 pub mod modules;
 
 pub use ban_list::BanList;
-pub use ban_manager::BanManager;
+pub use ban_manager::{BanManager, StatsSnapshot};
 pub use modules::build_modules;
