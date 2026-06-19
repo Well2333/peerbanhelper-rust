@@ -1,0 +1,5 @@
+[toolchain]
+# 施工建议使用较新的稳定版（workspace 设 edition=2021 以兼容当前环境的 1.75）。
+# 若升级到 edition 2024，请同时把 channel 提到 >= 1.85。
+channel = "stable"
+components = ["rustfmt", "clippy"]
