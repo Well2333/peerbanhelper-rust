@@ -8,10 +8,12 @@
 pub mod pcb;
 pub mod repo;
 pub mod rule_sub;
+pub mod swarm;
 
 pub use pcb::{PcbAddressRow, PcbAnalysis, PcbRangeRow};
 pub use repo::{BanHistoryRow, BtnBanRow, NewBanHistory};
 pub use rule_sub::{RuleSubInfo, RuleSubLog};
+pub use swarm::{BtnSwarmRow, SwarmRow};
 
 use std::path::Path;
 use std::str::FromStr;

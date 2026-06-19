@@ -62,6 +62,8 @@ pub struct BanManager {
     stats: Stats,
     /// 每个下载器上轮登录是否成功（id → ok）。
     login_status: RwLock<HashMap<String, bool>>,
+    /// 是否把当前 swarm 记入 `tracked_swarm`（供 BTN 上行 submit_swarm）。
+    track_swarm: bool,
 }
 
 /// run_once 的重叠保护 RAII：退出时清标志。持有 `&AtomicBool`（Send），可跨 await。
@@ -73,6 +75,7 @@ impl Drop for WaveGuard<'_> {
 }
 
 impl BanManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         ban_list: Arc<BanList>,
         downloaders: Arc<DownloaderManager>,
@@ -80,6 +83,7 @@ impl BanManager {
         db: Db,
         global_ban_duration: i64,
         ignore_addresses: &[String],
+        track_swarm: bool,
     ) -> Arc<Self> {
         let mut ignore = IpMatcher::new();
         for a in ignore_addresses {
@@ -95,6 +99,7 @@ impl BanManager {
             running: AtomicBool::new(false),
             stats: Stats::default(),
             login_status: RwLock::new(HashMap::new()),
+            track_swarm,
         })
     }
 
@@ -253,6 +258,7 @@ impl BanManager {
                 }
             };
             let mut newly: Vec<String> = Vec::new();
+            let mut swarm: Vec<pbh_storage::SwarmRow> = Vec::new();
             for t in &torrents {
                 let peers = match d.get_peers(t).await {
                     Ok(p) => p,
@@ -262,6 +268,10 @@ impl BanManager {
                     }
                 };
                 for p in &peers {
+                    // swarm 跟踪：记录全部 peer（供 BTN 上行）。
+                    if self.track_swarm {
+                        swarm.push(swarm_row(d.id(), t, p, now));
+                    }
                     if self.ignore.contains(p.address.ip) || self.ban_list.contains(p.address.ip) {
                         continue;
                     }
@@ -270,6 +280,11 @@ impl BanManager {
                     if matches!(r.action, PeerAction::Ban | PeerAction::BanForDisconnect) {
                         self.record_ban(d.id(), t, p, &r, now, &mut newly).await;
                     }
+                }
+            }
+            if !swarm.is_empty() {
+                if let Err(e) = self.db.upsert_tracked_swarm(&swarm).await {
+                    tracing::warn!("swarm 记录失败: {e}");
                 }
             }
 
@@ -382,6 +397,28 @@ impl BanManager {
 
 fn meta_unban(now: i64, dur: i64) -> i64 {
     now.saturating_add(dur)
+}
+
+/// 构造一条 swarm 观测行。
+fn swarm_row(downloader_id: &str, t: &Torrent, p: &Peer, now: i64) -> pbh_storage::SwarmRow {
+    pbh_storage::SwarmRow {
+        ip: p.address.ip.to_string(),
+        port: p.address.port as i64,
+        info_hash: t.hash.clone(),
+        torrent_is_private: t.private_torrent,
+        torrent_size: t.size,
+        downloader: downloader_id.to_string(),
+        downloader_progress: t.progress,
+        peer_id: p.peer_id.clone(),
+        client_name: p.client_name.clone(),
+        peer_progress: p.progress,
+        uploaded: p.uploaded.max(0),
+        upload_speed: p.upload_speed.max(0),
+        downloaded: p.downloaded.max(0),
+        download_speed: p.download_speed.max(0),
+        last_flags: p.flags.as_ref().map(|f| f.raw.clone()),
+        now,
+    }
 }
 
 fn now_ms() -> i64 {

@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 flate2 = { workspace = true }
 sha2 = { workspace = true }
+chrono = { workspace = true }
 parking_lot = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

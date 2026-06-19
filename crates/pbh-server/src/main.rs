@@ -103,6 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &btn_state,
     );
     let module_count = modules.len();
+    // BTN 开启上报时跟踪 swarm（供 submit_swarm）。
+    let track_swarm = app_cfg.btn.enabled && app_cfg.btn.submit;
+    if track_swarm {
+        let _ = db.clear_tracked_swarm().await; // 临时表,启动清空
+    }
     let ban_manager = BanManager::new(
         ban_list,
         downloaders.clone(),
@@ -110,6 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db.clone(),
         profile.ban_duration,
         &profile.ignore_peers_from_addresses,
+        track_swarm,
     );
 
     // 6. 装配上下文

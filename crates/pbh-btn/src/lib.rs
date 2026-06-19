@@ -25,7 +25,7 @@ use pbh_storage::Db;
 
 pub use client::{gzip, BtnClient};
 pub use hash::hashed_identifier;
-pub use model::{BtnBan, BtnConfigResponse, BtnRuleset, SubmitBansBody};
+pub use model::{BtnBan, BtnConfigResponse, BtnRuleset, BtnSwarm, SubmitBansBody, SubmitSwarmBody};
 pub use online::{apply_allowlist, apply_denylist, apply_ruleset, BtnNetworkOnline, BtnState};
 pub use pow::{solve as pow_solve, PowChallenge};
 
@@ -153,6 +153,14 @@ async fn run_abilities(
                 "submit_bans" if cfg.submit => {
                     submit_bans(client, endpoint, db).await;
                 }
+                "submit_swarm" if cfg.submit => {
+                    submit_swarm(client, endpoint, db).await;
+                }
+                "heartbeat" => match client.heartbeat(endpoint).await {
+                    Ok(Some(ip)) => tracing::info!("BTN 心跳:外网 IP {ip}"),
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!("BTN 心跳失败: {e}"),
+                },
                 _ => {}
             }
             last.insert(key.clone(), now);
@@ -219,6 +227,81 @@ async fn submit_bans(client: &BtnClient, url: &str, db: &Db) {
         }
         Err(e) => tracing::warn!("BTN submit_bans 上报失败: {e}"),
     }
+}
+
+/// 上行提交当前 swarm（游标 `last_time_seen,id` 分页 + gzip）。
+async fn submit_swarm(client: &BtnClient, url: &str, db: &Db) {
+    const CURSOR_KEY: &str = "BtnAbilitySubmitSwarm.cursor";
+    let cursor = db.meta_get(CURSOR_KEY).await.ok().flatten();
+    let (ctime, cid) = parse_swarm_cursor(cursor.as_deref());
+    let rows = match db.query_btn_swarm(ctime, cid, 1000).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("BTN submit_swarm 查询失败: {e}");
+            return;
+        }
+    };
+    if rows.is_empty() {
+        return;
+    }
+    let last = rows.last().unwrap();
+    let new_cursor = format!("{},{}", last.last_time_seen, last.id);
+    let n = rows.len();
+    let swarms: Vec<BtnSwarm> = rows
+        .into_iter()
+        .map(|r| BtnSwarm {
+            torrent_identifier: hashed_identifier(&r.info_hash),
+            torrent_is_private: r.torrent_is_private,
+            torrent_size: r.torrent_size,
+            downloader: r.downloader,
+            downloader_progress: r.downloader_progress,
+            peer_ip: r.ip,
+            peer_port: r.port,
+            peer_id: r.peer_id,
+            peer_client_name: r.client_name,
+            peer_progress: r.peer_progress,
+            to_peer_traffic: r.uploaded,
+            to_peer_traffic_offset: r.uploaded_offset,
+            from_peer_traffic: r.downloaded,
+            from_peer_traffic_offset: r.downloaded_offset,
+            first_time_seen: iso8601(r.first_time_seen),
+            last_time_seen: iso8601(r.last_time_seen),
+            peer_last_flags: r.last_flags,
+            upload_speed: r.upload_speed,
+            download_speed: r.download_speed,
+            download_speed_max: r.download_speed_max,
+            upload_speed_max: r.upload_speed_max,
+        })
+        .collect();
+    let Ok(body) = serde_json::to_string(&SubmitSwarmBody { swarms }) else {
+        return;
+    };
+    match client.submit_gzip(url, &body).await {
+        Ok(()) => {
+            let _ = db.meta_set(CURSOR_KEY, &new_cursor).await;
+            tracing::info!("BTN 已上报 {n} 条 swarm (游标→{new_cursor})");
+        }
+        Err(e) => tracing::warn!("BTN submit_swarm 上报失败: {e}"),
+    }
+}
+
+/// 解析 swarm 游标 `"lastTimeSeen,id"`（默认 0,0）。
+fn parse_swarm_cursor(s: Option<&str>) -> (i64, i64) {
+    let Some(s) = s else { return (0, 0) };
+    let mut it = s.split(',');
+    let t = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    let id = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    (t, id)
+}
+
+/// epoch ms → ISO 8601（UTC）。
+fn iso8601(ms: i64) -> String {
+    use chrono::TimeZone;
+    chrono::Utc
+        .timestamp_millis_opt(ms)
+        .single()
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_default()
 }
 
 async fn sleep_checked(sd: &Arc<AtomicBool>, secs: u64) {

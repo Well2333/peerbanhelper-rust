@@ -89,6 +89,43 @@ pub struct SubmitBansBody {
     pub bans: Vec<BtnBan>,
 }
 
+// ---------------- 上行 SubmitSwarm ----------------
+
+/// 上报的单条 swarm 观测（对应 `BtnSwarm`）。时间用 ISO 8601。
+#[derive(Debug, Clone, Serialize)]
+pub struct BtnSwarm {
+    pub torrent_identifier: String,
+    pub torrent_is_private: bool,
+    pub torrent_size: i64,
+    pub downloader: String,
+    pub downloader_progress: f64,
+    pub peer_ip: String,
+    pub peer_port: i64,
+    pub peer_id: Option<String>,
+    pub peer_client_name: Option<String>,
+    pub peer_progress: f64,
+    /// 我方上传给 peer（当前 + 重连前累计 offset）。
+    pub to_peer_traffic: i64,
+    pub to_peer_traffic_offset: i64,
+    /// 我方从 peer 下载。
+    pub from_peer_traffic: i64,
+    pub from_peer_traffic_offset: i64,
+    /// ISO 8601 OffsetDateTime。
+    pub first_time_seen: String,
+    pub last_time_seen: String,
+    pub peer_last_flags: Option<String>,
+    pub upload_speed: i64,
+    pub download_speed: i64,
+    pub download_speed_max: i64,
+    pub upload_speed_max: i64,
+}
+
+/// SubmitSwarm 请求体。
+#[derive(Debug, Clone, Serialize)]
+pub struct SubmitSwarmBody {
+    pub swarms: Vec<BtnSwarm>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

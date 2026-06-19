@@ -119,6 +119,22 @@ impl BtnClient {
         Ok(Some((text, ver)))
     }
 
+    /// 心跳：上报 `{"ifaddr":"default"}`,返回服务端看到的外网 IP。
+    pub async fn heartbeat(&self, url: &str) -> reqwest::Result<Option<String>> {
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.base_headers())
+            .json(&serde_json::json!({"ifaddr": "default"}))
+            .send()
+            .await?
+            .error_for_status()?;
+        let v: serde_json::Value = resp.json().await?;
+        Ok(v.get("external_ip")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()))
+    }
+
     /// gzip 上行 JSON。
     pub async fn submit_gzip(&self, url: &str, json_body: &str) -> reqwest::Result<()> {
         let gz = gzip(json_body.as_bytes());
