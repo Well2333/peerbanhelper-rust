@@ -37,8 +37,26 @@ pub fn router(state: WebState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/api/auth/login", post(login))
+        // 公开纯文本封禁列表,供下载器/外部消费（无需鉴权）。
+        .route("/blocklist/ip", get(blocklist_ip))
         .merge(protected)
         .with_state(state)
+}
+
+/// 纯文本导出当前封禁的 IP/CIDR（每行一条）。
+async fn blocklist_ip(State(st): State<WebState>) -> Response {
+    let lines: Vec<String> = st
+        .ban_manager
+        .ban_list()
+        .snapshot()
+        .into_iter()
+        .map(|(net, _)| net)
+        .collect();
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        lines.join("\n"),
+    )
+        .into_response()
 }
 
 async fn index() -> Html<&'static str> {

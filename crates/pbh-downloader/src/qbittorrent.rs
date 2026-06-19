@@ -187,7 +187,7 @@ impl Downloader for QBittorrentClient {
                     name: t.name,
                     progress: t.progress,
                     size: t.total_size,
-                    completed_size: -1, // 精确值由 M5 PCB 经 /torrents/properties 补
+                    completed_size: t.completed.unwrap_or(-1), // qB /torrents/info 的 completed
                     private_torrent: is_private,
                 });
             }
@@ -316,6 +316,9 @@ struct QbTorrent {
     name: String,
     #[serde(default)]
     total_size: i64,
+    /// 已完成数据量（字节）。qB `/torrents/info` 提供;缺失时为 None → completed_size=-1。
+    #[serde(default)]
+    completed: Option<i64>,
     #[serde(default)]
     progress: f64,
     #[serde(default)]
@@ -397,5 +400,19 @@ mod tests {
         assert_eq!(p.ip, "1.2.3.4");
         assert_eq!(p.port, 6881);
         assert_eq!(p.up_speed, 20);
+    }
+
+    #[test]
+    fn torrent_json_parses_completed() {
+        // 含 completed → 用作 completed_size。
+        let t: QbTorrent = serde_json::from_str(
+            r#"{"hash":"abc","name":"x","total_size":1000,"completed":640,"progress":0.64,"is_private":true}"#,
+        )
+        .unwrap();
+        assert_eq!(t.total_size, 1000);
+        assert_eq!(t.completed, Some(640));
+        // 缺 completed → None（→ completed_size=-1）。
+        let t2: QbTorrent = serde_json::from_str(r#"{"hash":"d","total_size":50}"#).unwrap();
+        assert_eq!(t2.completed, None);
     }
 }
