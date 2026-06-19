@@ -11,12 +11,17 @@ pub struct NewBanHistory {
     pub port: i64,
     pub peer_id: Option<String>,
     pub client_name: Option<String>,
+    /// 我方累计上传给该 peer（Peer.uploaded；= BTN to_peer_traffic）。
+    pub peer_uploaded: i64,
+    /// 我方累计从该 peer 下载（Peer.downloaded；= BTN from_peer_traffic）。
+    pub peer_downloaded: i64,
     pub peer_progress: f64,
     pub downloader_progress: f64,
     pub torrent_id: i64,
     pub module_name: String,
     pub rule_name: String,
     pub description: String,
+    pub flags: Option<String>,
     pub downloader: String,
 }
 
@@ -70,9 +75,9 @@ impl Db {
         sqlx::query(
             "INSERT INTO history(
                 ban_at, unban_at, ip, port, peer_id, peer_client_name,
-                peer_progress, downloader_progress, torrent_id, module_name,
-                rule_name, description, downloader)
-             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                peer_uploaded, peer_downloaded, peer_progress, downloader_progress,
+                torrent_id, module_name, rule_name, description, flags, downloader)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(h.ban_at)
         .bind(h.unban_at)
@@ -80,12 +85,15 @@ impl Db {
         .bind(h.port)
         .bind(&h.peer_id)
         .bind(&h.client_name)
+        .bind(h.peer_uploaded)
+        .bind(h.peer_downloaded)
         .bind(h.peer_progress)
         .bind(h.downloader_progress)
         .bind(h.torrent_id)
         .bind(&h.module_name)
         .bind(&h.rule_name)
         .bind(&h.description)
+        .bind(&h.flags)
         .bind(&h.downloader)
         .execute(self.pool())
         .await?;
@@ -128,40 +136,31 @@ impl Db {
         Ok(row.0)
     }
 
-    /// 供 BTN SubmitBans：按 id 游标取封禁历史（join torrents 取 info_hash/size）。
+    /// 供 BTN SubmitBans：按 id 游标取封禁历史（join torrents 取 info_hash/size/private）。
     pub async fn query_btn_bans(&self, after_id: i64, limit: i64) -> Result<Vec<BtnBanRow>> {
-        let rows = sqlx::query_as::<_, (i64, i64, String, i64, Option<String>, Option<String>, f64, String, i64, String, String, String)>(
-            "SELECT h.id, h.ban_at, h.ip, h.port, h.peer_id, h.peer_client_name, h.peer_progress,
-                    COALESCE(t.info_hash,''), COALESCE(t.size,0), h.module_name, h.rule_name, h.description
+        let rows = sqlx::query_as::<_, BtnBanRow>(
+            "SELECT h.id, h.ban_at, h.ip, h.port, h.peer_id,
+                    h.peer_client_name AS client_name,
+                    COALESCE(h.peer_uploaded,0) AS peer_uploaded,
+                    COALESCE(h.peer_downloaded,0) AS peer_downloaded,
+                    h.peer_progress, h.downloader_progress,
+                    COALESCE(t.info_hash,'') AS info_hash,
+                    COALESCE(t.size,0) AS torrent_size,
+                    COALESCE(t.private_torrent,0) AS torrent_is_private,
+                    h.module_name, h.rule_name, h.description, h.flags
              FROM history h LEFT JOIN torrents t ON h.torrent_id = t.id
              WHERE h.id > ? ORDER BY h.id ASC LIMIT ?",
         )
         .bind(after_id)
         .bind(limit)
         .fetch_all(self.pool())
-        .await?
-        .into_iter()
-        .map(|r| BtnBanRow {
-            id: r.0,
-            ban_at: r.1,
-            ip: r.2,
-            port: r.3,
-            peer_id: r.4,
-            client_name: r.5,
-            peer_progress: r.6,
-            info_hash: r.7,
-            torrent_size: r.8,
-            module_name: r.9,
-            rule_name: r.10,
-            description: r.11,
-        })
-        .collect();
+        .await?;
         Ok(rows)
     }
 }
 
 /// 供 BTN 上行的封禁行（join torrents）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct BtnBanRow {
     pub id: i64,
     pub ban_at: i64,
@@ -169,12 +168,17 @@ pub struct BtnBanRow {
     pub port: i64,
     pub peer_id: Option<String>,
     pub client_name: Option<String>,
+    pub peer_uploaded: i64,
+    pub peer_downloaded: i64,
     pub peer_progress: f64,
+    pub downloader_progress: f64,
     pub info_hash: String,
     pub torrent_size: i64,
+    pub torrent_is_private: bool,
     pub module_name: String,
     pub rule_name: String,
     pub description: String,
+    pub flags: Option<String>,
 }
 
 #[cfg(test)]
@@ -197,12 +201,15 @@ mod tests {
             port: 6881,
             peer_id: Some("-XL-".into()),
             client_name: None,
+            peer_uploaded: 5000,
+            peer_downloaded: 100,
             peer_progress: 0.5,
             downloader_progress: 1.0,
             torrent_id: id1,
             module_name: "PeerIdBlacklist".into(),
             rule_name: "peer-id-blacklist".into(),
             description: "test".into(),
+            flags: Some("D".into()),
             downloader: "d1".into(),
         })
         .await
@@ -211,5 +218,11 @@ mod tests {
         let rows = db.query_ban_history(10, 0).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ip, "1.2.3.4");
+        // BTN 行查询含新字段。
+        let btn = db.query_btn_bans(0, 10).await.unwrap();
+        assert_eq!(btn.len(), 1);
+        assert_eq!(btn[0].peer_uploaded, 5000);
+        assert_eq!(btn[0].peer_downloaded, 100);
+        assert_eq!(btn[0].flags.as_deref(), Some("D"));
     }
 }

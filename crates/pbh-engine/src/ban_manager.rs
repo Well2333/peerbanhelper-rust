@@ -350,12 +350,15 @@ impl BanManager {
             port: p.address.port as i64,
             peer_id: p.peer_id.clone(),
             client_name: p.client_name.clone(),
+            peer_uploaded: p.uploaded,
+            peer_downloaded: p.downloaded,
             peer_progress: p.progress,
             downloader_progress: t.progress,
             torrent_id,
             module_name: r.module.to_string(),
             rule_name: r.rule.clone(),
             description: r.reason.clone(),
+            flags: p.flags.as_ref().map(|f| f.raw.clone()),
             downloader: downloader_id.to_string(),
         };
         if let Err(e) = self.db.insert_ban_history(&row).await {

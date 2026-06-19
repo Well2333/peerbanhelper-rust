@@ -195,11 +195,17 @@ async fn submit_bans(client: &BtnClient, url: &str, db: &Db) {
             peer_id: r.peer_id,
             peer_client_name: r.client_name,
             peer_progress: r.peer_progress,
+            peer_flag: r.flags,
             torrent_identifier: hashed_identifier(&r.info_hash),
+            torrent_is_private: r.torrent_is_private,
             torrent_size: r.torrent_size,
+            from_peer_traffic: r.peer_downloaded,
+            to_peer_traffic: r.peer_uploaded,
+            downloader_progress: r.downloader_progress,
             module: r.module_name,
             rule: r.rule_name,
-            description: r.description,
+            description: Some(r.description),
+            structured_data: None,
         })
         .collect();
     let n = bans.len();

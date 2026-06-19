@@ -53,7 +53,10 @@ pub struct BtnRuleset {
 
 // ---------------- 上行 SubmitBans ----------------
 
-/// 上报的单条封禁（对应 `BtnBan`）。
+/// 上报的单条封禁（对应 `BtnBan`，字段与上游 `@SerializedName` 对齐）。
+///
+/// `Option` 字段不加 `skip_serializing_if`：上游 Gson `serializeNulls()` 会输出 `null`，本结构同样
+/// 在 None 时输出 JSON `null`，保持一致（缺失必填/键名是 400 的根因）。
 #[derive(Debug, Clone, Serialize)]
 pub struct BtnBan {
     /// epoch millis。
@@ -63,11 +66,21 @@ pub struct BtnBan {
     pub peer_id: Option<String>,
     pub peer_client_name: Option<String>,
     pub peer_progress: f64,
+    /// libtorrent flag 串（可空）。
+    pub peer_flag: Option<String>,
     pub torrent_identifier: String,
+    pub torrent_is_private: bool,
     pub torrent_size: i64,
+    /// 我方从该 peer 下载的字节数（= history.peer_downloaded）。
+    pub from_peer_traffic: i64,
+    /// 我方上传给该 peer 的字节数（= history.peer_uploaded）。
+    pub to_peer_traffic: i64,
+    pub downloader_progress: f64,
     pub module: String,
     pub rule: String,
-    pub description: String,
+    pub description: Option<String>,
+    /// 字符串化的结构化数据（可空）。
+    pub structured_data: Option<String>,
 }
 
 /// SubmitBans 请求体。
@@ -136,16 +149,30 @@ mod tests {
                 peer_id: Some("-XL0019-".into()),
                 peer_client_name: None,
                 peer_progress: 0.5,
+                peer_flag: None,
                 torrent_identifier: "deadbeef".into(),
+                torrent_is_private: false,
                 torrent_size: 1024,
+                from_peer_traffic: 100,
+                to_peer_traffic: 200,
+                downloader_progress: 1.0,
                 module: "BtnNetworkOnline".into(),
                 rule: "bad_clients".into(),
-                description: "命中 BTN 规则".into(),
+                description: Some("命中 BTN 规则".into()),
+                structured_data: None,
             }],
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains("\"ban_at\":1640000000000"));
         assert!(json.contains("\"peer_ip\":\"1.2.3.4\""));
         assert!(json.contains("\"torrent_identifier\":\"deadbeef\""));
+        // 必填字段在场。
+        assert!(json.contains("\"torrent_is_private\":false"));
+        assert!(json.contains("\"from_peer_traffic\":100"));
+        assert!(json.contains("\"to_peer_traffic\":200"));
+        assert!(json.contains("\"downloader_progress\":1.0"));
+        // null 字段输出（匹配 Java serializeNulls）。
+        assert!(json.contains("\"peer_flag\":null"));
+        assert!(json.contains("\"structured_data\":null"));
     }
 }
