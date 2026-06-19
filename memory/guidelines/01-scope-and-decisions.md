@@ -1,6 +1,6 @@
 # 项目范围与已确认决策（v2 · 极简重构）
 
-> 本文件是**范围/决策的权威单一来源**。路线图与里程碑见 `docs/02-roadmap.md`;架构约定见 `02-architecture.md`。
+> 本文件是**范围/决策的权威单一来源**。路线图与里程碑见 `memory/design/roadmap.md`;架构约定见 `02-architecture.md`。
 
 ## 目标（不可漂移）
 
@@ -46,7 +46,7 @@ qB/qBEE 以外的下载器(保留 trait+工厂可扩展);历史数据迁移;MySQ
 
 ## 新版极简 API（要点）
 
-Bearer token 鉴权;自有信封 `{ ok, data, error }`;约 18 个端点;内置 vanilla 单页。详见 `docs/02-roadmap.md` §1。
+Bearer token 鉴权;自有信封 `{ ok, data, error }`;约 18 个端点;内置 vanilla 单页。详见 `memory/design/roadmap.md` §1。
 
 ## 技术选型
 

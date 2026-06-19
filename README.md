@@ -2,18 +2,28 @@
 
 [PeerBanHelper](https://github.com/PBH-BTN/PeerBanHelper)（Java）的 **完全重构、最精简** Rust 重写：**单文件原生二进制、零额外部署依赖**（内置嵌入式 SQLite）、达到与原版**一致的封禁效果**。保留完整封禁能力（全部高价值规则 + 完整 BTN 云端网络 + 封禁历史），**弃用原 Vue 前端**，改为自研极简 REST API + 内置轻量单页。
 
-> 状态：**骨架阶段（M0 前）**。当前包含分析、战略与 Cargo workspace 骨架，业务逻辑待按 `docs/02-roadmap.md` 实现。
+> 状态：**骨架阶段（M0 前）**。当前包含分析、战略与 Cargo workspace 骨架，业务逻辑待按 `memory/design/roadmap.md` 实现。
 
 ## 文档（按阅读顺序）
 
+**`docs/`（面向用户/治理）**
+
 | 文件 | 内容 |
 |---|---|
-| `docs/最高优先级工作守则.md` | **流程总纲（最高优先级）**：仓库记忆、分支/提交、验证 |
-| `docs/02-roadmap.md` | **权威方案**：v2 战略、范围(保留/砍除)、自研 API、M0–M9 里程碑与验收、对拍策略 |
-| `docs/01-architecture-analysis.md` | 上游系统与子系统的事实分析（建库时查源码基准用） |
-| `docs/03-db-schema.md` | 嵌入式 SQLite 表结构（v2 精简表集）与关键 SQL |
+| `docs/最高优先级工作守则.md` | 流程总纲（最高优先级）：仓库记忆、分支/提交、验证 |
 
-> 长期规范沉淀在 `memory/guidelines/`，变更记录在 `memory/changelog/`。
+> 未来的端用户文档（安装/配置/使用）也放 `docs/`。
+
+**`memory/`（仓库长期记忆 · 内部）**
+
+| 路径 | 内容 |
+|---|---|
+| `memory/guidelines/` | **一级规范（权威）**：范围/决策、架构约定、编码、流程 |
+| `memory/design/roadmap.md` | 路线图与施工指南：自研 API、M0–M9 里程碑与验收、对拍策略 |
+| `memory/design/architecture-analysis.md` | 上游系统与子系统的事实分析（建库时查源码基准用） |
+| `memory/design/db-schema.md` | 嵌入式 SQLite 表结构（v2 精简表集）与关键 SQL |
+| `memory/changelog/` | 每次提交的变更记录 |
+| `memory/test-status/` | 已测记录 / 待测报告 |
 
 ## Crate 分层
 
@@ -37,7 +47,7 @@
 
 ## 前端（自研极简）
 
-弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `docs/02-roadmap.md` §4。
+弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `memory/design/roadmap.md` §4。
 
 ## 开发
 

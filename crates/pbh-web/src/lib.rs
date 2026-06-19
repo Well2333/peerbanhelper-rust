@@ -1,6 +1,6 @@
 //! pbh-web —— 自研极简 HTTP/WS 层（v2:弃用原 Vue 前端,自由设计的小型 API）。
 //!
-//! 见 `docs/02-roadmap.md` §4。**不复刻** Java 的 StdResp/Gson/SPA/OOBE/fail2ban/~90 端点。
+//! 见 `memory/design/roadmap.md` §4。**不复刻** Java 的 StdResp/Gson/SPA/OOBE/fail2ban/~90 端点。
 //!
 //! 骨架阶段仅定义信封与角色枚举（std-only）。M7 用 axum 实现:
 //! - 自有信封 `{ ok, data, error }`、分页

@@ -4,7 +4,7 @@
 >
 > **范围、保留/砍除、四项决策** → 见 `memory/guidelines/01-scope-and-decisions.md`（权威）。
 > **架构约定**（crate 分层、数据流、流水线、可选注入） → 见 `memory/guidelines/02-architecture.md`（权威）。
-> **上游子系统事实分析** → `01-architecture-analysis.md`。**库表** → `03-db-schema.md`。
+> **上游子系统事实分析** → `memory/design/architecture-analysis.md`。**库表** → `memory/design/db-schema.md`。
 > 本文聚焦：**新版 API 设计 + 里程碑 + 验收 + 对拍策略**。
 
 一句话范围：保留完整封禁能力（全部高价值规则 + 完整 BTN + 封禁历史），自研极简 API + 内置单页;
@@ -35,7 +35,7 @@
 
 ## 2. 持久化
 
-保留表：`pcb_address`、`pcb_range`、`banlist`、`history`、`rule_sub_info`、`rule_sub_log`、`metadata`、`peer_records`、`tracked_swarm`（后两者供 BTN 上行）。完整定义、pragma、关键 upsert 见 `03-db-schema.md`。
+保留表：`pcb_address`、`pcb_range`、`banlist`、`history`、`rule_sub_info`、`rule_sub_log`、`metadata`、`peer_records`、`tracked_swarm`（后两者供 BTN 上行）。完整定义、pragma、关键 upsert 见 `memory/design/db-schema.md`。
 
 ---
 

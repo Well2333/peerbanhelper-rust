@@ -1,6 +1,6 @@
 # 架构约定（权威）
 
-> 本文件是**架构约定的权威单一来源**。范围/决策见 `01-scope-and-decisions.md`;路线图见 `docs/02-roadmap.md`。
+> 本文件是**架构约定的权威单一来源**。范围/决策见 `01-scope-and-decisions.md`;路线图见 `memory/design/roadmap.md`。
 
 ## 不照搬上游（硬原则）
 
