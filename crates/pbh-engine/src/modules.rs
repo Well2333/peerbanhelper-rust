@@ -11,7 +11,7 @@ use pbh_rules::{
     PeerIdBlacklist, ProtectMode, RuleFeatureModule, RuleSet,
 };
 
-use crate::{AutoRangeBan, BanList, PtrBlacklist};
+use crate::{AutoRangeBan, BanList, PcbConfig, ProgressCheatBlocker, PtrBlacklist};
 
 /// 内置默认 PeerID 黑名单（常见离线下载/吸血客户端）。
 const DEFAULT_PEER_ID: &[&str] = &[
@@ -128,6 +128,30 @@ pub fn build_modules(
             field_bool(profile, m, "reset-on-status-change", true),
             ProtectMode::from_u8(field_i64(profile, m, "protect-mode", 0).clamp(0, 2) as u8),
         )));
+    }
+
+    // progress-cheat-blocker（默认启用——反吸血核心）
+    if enabled(profile, "progress-cheat-blocker", true) {
+        let m = "progress-cheat-blocker";
+        let pcfg = PcbConfig {
+            minimum_size: field_i64(profile, m, "minimum-size", 50_000_000),
+            maximum_difference: field_f64(profile, m, "maximum-difference", 0.1),
+            rewind_maximum_difference: field_f64(profile, m, "rewind-maximum-difference", 0.07),
+            block_excessive: field_bool(profile, m, "block-excessive-clients", true),
+            excessive_threshold: field_f64(profile, m, "excessive-threshold", 1.5),
+            ipv4_prefix: field_i64(profile, m, "ipv4-prefix-length", 32).clamp(0, 32) as u8,
+            ipv6_prefix: field_i64(profile, m, "ipv6-prefix-length", 56).clamp(0, 128) as u8,
+            ban_duration: field_i64(profile, m, "ban-duration", 2_592_000_000),
+            max_wait_duration: field_i64(profile, m, "max-wait-duration", 30_000),
+            fast_pcb_test_percentage: field_f64(profile, m, "fast-pcb-test-percentage", 0.1),
+            fast_pcb_test_block_duration: field_i64(
+                profile,
+                m,
+                "fast-pcb-test-block-duration",
+                15_000,
+            ),
+        };
+        out.push(Arc::new(ProgressCheatBlocker::new(pcfg)));
     }
 
     // ptr-blacklist（默认关闭，需联网 DNS）

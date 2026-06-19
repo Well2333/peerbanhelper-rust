@@ -12,10 +12,12 @@ pub mod auto_range_ban;
 pub mod ban_list;
 pub mod ban_manager;
 pub mod modules;
+pub mod pcb;
 pub mod ptr_blacklist;
 
 pub use auto_range_ban::AutoRangeBan;
 pub use ban_list::BanList;
 pub use ban_manager::{BanManager, StatsSnapshot};
 pub use modules::build_modules;
+pub use pcb::{PcbConfig, ProgressCheatBlocker};
 pub use ptr_blacklist::PtrBlacklist;
