@@ -30,7 +30,8 @@ pub fn router(state: WebState) -> Router {
         .route("/api/bans/:ip", delete(remove_ban))
         .route("/api/bans/history", get(ban_history))
         .route("/api/config/profile", get(get_profile).put(put_profile))
-        .route("/api/sub/rules", get(list_sub_rules))
+        .route("/api/sub/rules", get(list_sub_rules).put(upsert_sub_rule))
+        .route("/api/sub/rules/:id", delete(delete_sub_rule))
         .route("/api/sub/logs", get(sub_rule_logs))
         .route("/api/logs", get(get_logs))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
@@ -352,13 +353,152 @@ async fn ban_history(State(st): State<WebState>, Query(q): Query<PageQuery>) -> 
     .into_response()
 }
 
-// ---------------- IP 黑名单订阅状态 ----------------
+// ---------------- IP 黑名单订阅管理 ----------------
 
+/// 列出订阅：以 profile.yml 配置为准（id/name/url/enabled），合并 DB 状态（条数/最后更新）。
 async fn list_sub_rules(State(st): State<WebState>) -> Response {
-    match st.db.list_rule_subs().await {
-        Ok(rows) => ApiResp::ok(rows).into_response(),
-        Err(e) => bad_request(e.to_string()),
+    let profile = st.config.current().profile.clone();
+    let configured = profile_sub_rules(&profile);
+    let db_rows = st.db.list_rule_subs().await.unwrap_or_default();
+    let items: Vec<_> = configured
+        .into_iter()
+        .map(|(rule_id, name, url, enabled)| {
+            let st_row = db_rows.iter().find(|r| r.rule_id == rule_id);
+            json!({
+                "rule_id": rule_id,
+                "rule_name": name,
+                "sub_url": url,
+                "enabled": enabled,
+                "ent_count": st_row.and_then(|r| r.ent_count),
+                "last_update": st_row.and_then(|r| r.last_update),
+            })
+        })
+        .collect();
+    ApiResp::ok(items).into_response()
+}
+
+#[derive(Deserialize)]
+struct SubRuleBody {
+    rule_id: String,
+    name: String,
+    url: String,
+    #[serde(default = "yes")]
+    enabled: bool,
+}
+fn yes() -> bool {
+    true
+}
+
+/// 新增/更新一条订阅（写入 profile.yml 的 ip-address-blocker-rules.rules）。
+async fn upsert_sub_rule(State(st): State<WebState>, Json(b): Json<SubRuleBody>) -> Response {
+    if b.rule_id.trim().is_empty() || b.url.trim().is_empty() {
+        return bad_request("rule_id 与 url 必填");
     }
+    if b.rule_id.contains('.') {
+        return bad_request("rule_id 不可含 '.'");
+    }
+    let mut profile = st.config.current().profile.clone();
+    set_sub_rule(&mut profile, &b);
+    match save_and_rebuild(&st, profile).await {
+        Ok(n) => ApiResp::ok(json!({ "modules": n })).into_response(),
+        Err(e) => bad_request(e),
+    }
+}
+
+/// 删除一条订阅。
+async fn delete_sub_rule(State(st): State<WebState>, Path(id): Path<String>) -> Response {
+    let mut profile = st.config.current().profile.clone();
+    remove_sub_rule(&mut profile, &id);
+    let _ = st.db.delete_rule_sub(&id).await;
+    match save_and_rebuild(&st, profile).await {
+        Ok(n) => ApiResp::ok(json!({ "modules": n })).into_response(),
+        Err(e) => bad_request(e),
+    }
+}
+
+/// 从 profile 提取已配置订阅 (id, name, url, enabled)。
+fn profile_sub_rules(profile: &ProfileConfig) -> Vec<(String, String, String, bool)> {
+    let mut out = Vec::new();
+    let Some(rules) = profile
+        .module_section("ip-address-blocker-rules")
+        .and_then(|s| s.get("rules"))
+        .and_then(|v| v.as_mapping())
+    else {
+        return out;
+    };
+    for (k, v) in rules {
+        let Some(id) = k.as_str() else { continue };
+        out.push((
+            id.to_string(),
+            v.get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or(id)
+                .to_string(),
+            v.get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string(),
+            v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true),
+        ));
+    }
+    out
+}
+
+fn set_sub_rule(profile: &mut ProfileConfig, b: &SubRuleBody) {
+    use serde_yaml::{Mapping, Value};
+    let sec = profile
+        .module
+        .entry(Value::from("ip-address-blocker-rules"))
+        .or_insert_with(|| Value::Mapping(Mapping::new()));
+    let Value::Mapping(sec) = sec else { return };
+    sec.insert(Value::from("enabled"), Value::from(true)); // 有订阅则启用模块
+    let rules = sec
+        .entry(Value::from("rules"))
+        .or_insert_with(|| Value::Mapping(Mapping::new()));
+    let Value::Mapping(rules) = rules else { return };
+    let mut r = Mapping::new();
+    r.insert(Value::from("enabled"), Value::from(b.enabled));
+    r.insert(Value::from("name"), Value::from(b.name.clone()));
+    r.insert(Value::from("url"), Value::from(b.url.clone()));
+    rules.insert(Value::from(b.rule_id.clone()), Value::Mapping(r));
+}
+
+fn remove_sub_rule(profile: &mut ProfileConfig, id: &str) {
+    use serde_yaml::Value;
+    if let Some(Value::Mapping(sec)) = profile.module.get_mut("ip-address-blocker-rules") {
+        let empty = if let Some(Value::Mapping(rules)) = sec.get_mut("rules") {
+            rules.remove(id);
+            rules.is_empty()
+        } else {
+            true
+        };
+        // 删到空 → 禁用模块,避免残留空的 IPBlackRuleList。
+        if empty {
+            sec.insert(Value::from("enabled"), Value::from(false));
+        }
+    }
+}
+
+/// 保存 profile + 重建规则模块（订阅即时下载）。返回模块数。
+async fn save_and_rebuild(
+    st: &WebState,
+    profile: ProfileConfig,
+) -> std::result::Result<usize, String> {
+    st.config
+        .save_profile(&profile)
+        .map_err(|e| e.to_string())?;
+    let p = st.config.current().profile.clone();
+    let modules = pbh_engine::build_modules(
+        &p,
+        p.ban_duration,
+        st.ban_manager.ban_list(),
+        &st.db,
+        &st.geoip,
+        &st.btn_state,
+    );
+    let n = modules.len();
+    st.ban_manager.rebuild_modules(modules);
+    Ok(n)
 }
 
 #[derive(Deserialize)]
