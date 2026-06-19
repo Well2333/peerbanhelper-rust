@@ -6,24 +6,19 @@
 
 ## 文档（按阅读顺序）
 
-**`docs/`（面向用户/治理）**
-
-| 文件 | 内容 |
-|---|---|
-| `docs/最高优先级工作守则.md` | 流程总纲（最高优先级）：仓库记忆、分支/提交、验证 |
-
-> 未来的端用户文档（安装/配置/使用）也放 `docs/`。
-
 **`memory/`（仓库长期记忆 · 内部）**
 
 | 路径 | 内容 |
 |---|---|
+| `memory/最高优先级工作守则.md` | 流程总纲（最高优先级）：仓库记忆、分支/提交、验证 |
 | `memory/guidelines/` | **一级规范（权威）**：范围/决策、架构约定、编码、流程 |
 | `memory/design/roadmap.md` | 路线图与施工指南：自研 API、M0–M9 里程碑与验收、对拍策略 |
 | `memory/design/architecture-analysis.md` | 上游系统与子系统的事实分析（建库时查源码基准用） |
 | `memory/design/db-schema.md` | 嵌入式 SQLite 表结构（v2 精简表集）与关键 SQL |
 | `memory/changelog/` | 每次提交的变更记录 |
 | `memory/test-status/` | 已测记录 / 待测报告 |
+
+> `docs/` 暂空，留给未来的端用户文档（安装/配置/使用）。
 
 ## Crate 分层
 
