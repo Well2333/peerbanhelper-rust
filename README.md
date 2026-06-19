@@ -44,14 +44,28 @@
 
 弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `memory/design/roadmap.md` §4。
 
-## 运行与测试
+## 构建与测试
 
-> ⚠️ 构建必须用 rustup 的 `cargo`（`~/.cargo/bin/cargo`），系统自带的 1.75 无法编译现代依赖。
+> ⚠️ 需 rustc **≥ 1.85**（系统自带的 1.75 无法编译现代依赖）。脚本会优先用 rustup 的 `~/.cargo/bin/cargo`；
+> 若未装 rustup：`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable -c clippy -c rustfmt`
+
+用 **`./build.sh`** 一键构建/测试/打包：
+
+```bash
+./build.sh            # 发布构建 → target/release/pbh
+./build.sh run        # 构建并运行（调试版，数据目录 ./data）
+./build.sh test       # 全部单元测试
+./build.sh clippy     # clippy + fmt 检查
+./build.sh package    # 发布构建 + 打包 → dist/pbh-<ver>-linux-x86_64.tar.gz
+./build.sh clean      # 清理
+```
+
+或手动：
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-cargo build -p pbh-server               # 首次会拉取依赖
-PBH_DATA_DIR=./data ./target/debug/pbh  # 运行（数据目录可改）
+cargo build --release -p pbh-server
+PBH_DATA_DIR=./data ./target/release/pbh
 ```
 
 首次启动会在 `./data/` 下生成配置与 SQLite 库，并在日志里**打印一次 API token**。

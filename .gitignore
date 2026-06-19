@@ -11,3 +11,4 @@ Cargo.lock.bak
 # 前端构建产物（由 webui 构建后注入）
 /crates/pbh-web/static
 .DS_Store
+/dist

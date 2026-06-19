@@ -64,6 +64,6 @@ rust-embed = "8"
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 1
 strip = true
+# 刻意不开 lto/codegen-units=1，以缩短构建时间;opt-level=3 运行性能已足够。
+# 需要极致体积/性能时再临时加 lto = "thin"、codegen-units = 1。
