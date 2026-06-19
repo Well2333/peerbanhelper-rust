@@ -163,6 +163,7 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
         st.ban_manager.ban_list(),
         &st.db,
         &st.geoip,
+        &st.btn_state,
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);

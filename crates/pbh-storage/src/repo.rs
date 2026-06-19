@@ -127,6 +127,54 @@ impl Db {
             .await?;
         Ok(row.0)
     }
+
+    /// 供 BTN SubmitBans：按 id 游标取封禁历史（join torrents 取 info_hash/size）。
+    pub async fn query_btn_bans(&self, after_id: i64, limit: i64) -> Result<Vec<BtnBanRow>> {
+        let rows = sqlx::query_as::<_, (i64, i64, String, i64, Option<String>, Option<String>, f64, String, i64, String, String, String)>(
+            "SELECT h.id, h.ban_at, h.ip, h.port, h.peer_id, h.peer_client_name, h.peer_progress,
+                    COALESCE(t.info_hash,''), COALESCE(t.size,0), h.module_name, h.rule_name, h.description
+             FROM history h LEFT JOIN torrents t ON h.torrent_id = t.id
+             WHERE h.id > ? ORDER BY h.id ASC LIMIT ?",
+        )
+        .bind(after_id)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(|r| BtnBanRow {
+            id: r.0,
+            ban_at: r.1,
+            ip: r.2,
+            port: r.3,
+            peer_id: r.4,
+            client_name: r.5,
+            peer_progress: r.6,
+            info_hash: r.7,
+            torrent_size: r.8,
+            module_name: r.9,
+            rule_name: r.10,
+            description: r.11,
+        })
+        .collect();
+        Ok(rows)
+    }
+}
+
+/// 供 BTN 上行的封禁行（join torrents）。
+#[derive(Debug, Clone)]
+pub struct BtnBanRow {
+    pub id: i64,
+    pub ban_at: i64,
+    pub ip: String,
+    pub port: i64,
+    pub peer_id: Option<String>,
+    pub client_name: Option<String>,
+    pub peer_progress: f64,
+    pub info_hash: String,
+    pub torrent_size: i64,
+    pub module_name: String,
+    pub rule_name: String,
+    pub description: String,
 }
 
 #[cfg(test)]

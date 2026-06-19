@@ -27,6 +27,8 @@ pub struct WebState {
     pub logs: Arc<LogBuffer>,
     /// GeoIP 可选注入（供 profile 热重载时重建 IPBlackList）。
     pub geoip: Option<Arc<dyn GeoIpProvider>>,
+    /// BTN 共享状态（供 profile 热重载时重建 BtnNetworkOnline）。
+    pub btn_state: Option<pbh_btn::SharedBtnState>,
 }
 
 /// 启动 HTTP 服务（阻塞直到出错/关闭）。

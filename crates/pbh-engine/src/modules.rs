@@ -12,6 +12,7 @@ use pbh_rules::{
 };
 use std::collections::HashSet;
 
+use pbh_btn::{BtnNetworkOnline, SharedBtnState};
 use pbh_geoip::GeoIpProvider;
 use pbh_storage::Db;
 
@@ -49,14 +50,21 @@ const DEFAULT_CLIENT_NAME: &[&str] = &[
 /// 默认启用：peer-id / client-name / anti-vampire（精确、低误伤）。
 /// 默认**关闭**：auto-range-ban、multi-dialing-blocker、idle-connection-dos-protection、ptr-blacklist
 /// （会扩大封禁面或需联网，按需在 profile.yml 开启）。
+#[allow(clippy::too_many_arguments)]
 pub fn build_modules(
     profile: &ProfileConfig,
     global_dur: i64,
     ban_list: &Arc<BanList>,
     db: &Db,
     geoip: &Option<Arc<dyn GeoIpProvider>>,
+    btn_state: &Option<SharedBtnState>,
 ) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();
+
+    // BTN 在线规则（仅当 BTN 启用——状态由 BtnManager 后台更新）。
+    if let Some(state) = btn_state {
+        out.push(Arc::new(BtnNetworkOnline::new(global_dur, state.clone())));
+    }
 
     // peer-id-blacklist（默认启用）
     if enabled(profile, "peer-id-blacklist", true) {

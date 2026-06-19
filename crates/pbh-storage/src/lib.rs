@@ -10,7 +10,7 @@ pub mod repo;
 pub mod rule_sub;
 
 pub use pcb::{PcbAddressRow, PcbAnalysis, PcbRangeRow};
-pub use repo::{BanHistoryRow, NewBanHistory};
+pub use repo::{BanHistoryRow, BtnBanRow, NewBanHistory};
 pub use rule_sub::{RuleSubInfo, RuleSubLog};
 
 use std::path::Path;

@@ -73,7 +73,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let geoip: Option<Arc<dyn GeoIpProvider>> =
         MaxmindProvider::load_from_dir(&paths.data_dir().join("geoip"))
             .map(|p| Arc::new(p) as Arc<dyn GeoIpProvider>);
-    let modules = build_modules(&profile, profile.ban_duration, &ban_list, &db, &geoip);
+    // BTN 云端威胁情报（仅当 config.yml 启用 + 有凭证）：后台拉取规则/名单更新共享状态。
+    let app_cfg = config.current().app.clone();
+    let btn_state: Option<pbh_btn::SharedBtnState> = if app_cfg.btn.enabled {
+        let state = pbh_btn::new_state();
+        pbh_btn::spawn(
+            pbh_btn::BtnRuntimeConfig {
+                config_url: app_cfg.btn.config_url.clone(),
+                app_id: app_cfg.btn.app_id.clone(),
+                app_secret: app_cfg.btn.app_secret.clone(),
+                installation_id: installation_id.clone(),
+                submit: app_cfg.btn.submit,
+                ban_duration: profile.ban_duration,
+            },
+            db.clone(),
+            state.clone(),
+        );
+        tracing::info!("BTN 已启用,后台调度启动");
+        Some(state)
+    } else {
+        None
+    };
+    let modules = build_modules(
+        &profile,
+        profile.ban_duration,
+        &ban_list,
+        &db,
+        &geoip,
+        &btn_state,
+    );
     let module_count = modules.len();
     let ban_manager = BanManager::new(
         ban_list,
@@ -126,6 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db: ctx.db.clone(),
         logs: ctx.logs.clone(),
         geoip: geoip.clone(),
+        btn_state: btn_state.clone(),
     };
     let bind = format!("{}:{}", cfg.app.server.address, cfg.app.server.http);
     match bind.parse::<std::net::SocketAddr>() {

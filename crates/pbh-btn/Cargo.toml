@@ -4,6 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# M8 引入 reqwest / serde / serde_json / flate2 / sha2 / tokio。骨架 std-only：协议常量 + ability 枚举。
 [dependencies]
 pbh-domain = { path = "../pbh-domain" }
+pbh-rules = { path = "../pbh-rules" }
+pbh-storage = { path = "../pbh-storage" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+flate2 = { workspace = true }
+sha2 = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
