@@ -112,7 +112,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ban_manager
         .clone()
         .spawn_loop(cfg.profile.check_interval as u64);
-    tracing::info!("Ban Wave 已启动。按 Ctrl-C 退出。（Web 界面将在 M7 接入）");
+
+    // 9. 启动 Web 服务
+    let web_state = pbh_web::WebState {
+        config: ctx.config.clone(),
+        downloaders: ctx.downloaders.clone(),
+        ban_manager: ctx.ban_manager.clone(),
+        db: ctx.db.clone(),
+        logs: ctx.logs.clone(),
+    };
+    let bind = format!("{}:{}", cfg.app.server.address, cfg.app.server.http);
+    match bind.parse::<std::net::SocketAddr>() {
+        Ok(addr) => {
+            tokio::spawn(async move {
+                if let Err(e) = pbh_web::serve(web_state, addr).await {
+                    tracing::error!("Web 服务错误: {e}");
+                }
+            });
+            tracing::info!(
+                "界面: http://{} （token 见上方日志）。按 Ctrl-C 退出。",
+                bind
+            );
+        }
+        Err(e) => tracing::error!("监听地址无效 {bind}: {e}"),
+    }
 
     // 等待退出信号。
     tokio::signal::ctrl_c().await.ok();

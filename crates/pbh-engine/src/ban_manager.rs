@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pbh_domain::{BanMetadata, CheckResult, Peer, PeerAction, Torrent};
+use std::net::IpAddr;
+
+use pbh_domain::{BanMetadata, CheckResult, Peer, PeerAction, PeerAddress, Torrent};
 use pbh_downloader::DownloaderManager;
 use pbh_rules::{IpMatcher, RuleFeatureModule};
 use pbh_storage::{Db, NewBanHistory};
@@ -62,6 +64,41 @@ impl BanManager {
 
     pub fn ban_list(&self) -> &Arc<BanList> {
         &self.ban_list
+    }
+
+    pub fn global_ban_duration(&self) -> i64 {
+        self.global_ban_duration
+    }
+
+    /// 手动封禁单个 IP。下次 wave 下发到下载器。
+    pub fn manual_ban(&self, ip: &str, duration_ms: i64) -> bool {
+        let Ok(addr) = ip.trim().parse::<IpAddr>() else {
+            return false;
+        };
+        let now = now_ms();
+        let dur = if duration_ms > 0 {
+            duration_ms
+        } else {
+            self.global_ban_duration
+        };
+        let meta = BanMetadata {
+            context: "manual".into(),
+            random_id: gen_id(),
+            peer: PeerAddress::new(addr, 0),
+            ban_at: now,
+            unban_at: now.saturating_add(dur),
+            ban_for_disconnect: false,
+            exclude_from_report: false,
+            exclude_from_display: false,
+            rule: "manual".into(),
+            description: "手动封禁".into(),
+        };
+        self.ban_list.ban(ip, meta)
+    }
+
+    /// 手动解封。
+    pub fn manual_unban(&self, ip: &str) -> bool {
+        self.ban_list.unban(ip).is_some()
     }
 
     /// 对单个 peer 跑所有模块，合并结果（Skip 短路）。

@@ -44,7 +44,7 @@
 
 弃用原 Vue 前端。改为 **自研极简 REST/JSON API + 内置轻量单页**（vanilla HTML/JS，无构建工具链，`rust-embed` 内嵌进二进制，单文件部署）。覆盖：状态、下载器管理、封禁列表/历史、实时日志、规则与订阅配置。API 设计见 `memory/design/roadmap.md` §4。
 
-## 运行与测试（当前为 CLI 形态；Web 界面在 M7 接入）
+## 运行与测试
 
 > ⚠️ 构建必须用 rustup 的 `cargo`（`~/.cargo/bin/cargo`），系统自带的 1.75 无法编译现代依赖。
 
@@ -54,24 +54,15 @@ cargo build -p pbh-server               # 首次会拉取依赖
 PBH_DATA_DIR=./data ./target/debug/pbh  # 运行（数据目录可改）
 ```
 
-首次启动会在 `./data/` 下生成 `config/config.yml`、`config/profile.yml`、SQLite 库，并打印一次 API token。
+首次启动会在 `./data/` 下生成配置与 SQLite 库，并在日志里**打印一次 API token**。
 
-**接入你的 qBittorrent 测试封禁**：编辑 `./data/config/downloaders.yml`（YAML 列表），例如：
+然后**用浏览器打开 `http://127.0.0.1:9898`**，用该 token 登录，即可：
 
-```yaml
-- id: qb1
-  type: qbittorrent          # 或 qbittorrentee
-  name: 我的 qB
-  endpoint: http://127.0.0.1:8080
-  username: admin
-  password: adminadmin
-  increment-ban: false       # true 用增量封禁(/transfer/banPeers)
-  use-shadow-ban: false      # 仅 qbittorrentee 影子封禁
-  verify-ssl: true
-  ignore-private: false
-```
+1. 在「下载器」里添加你的 qBittorrent / qBittorrentEE（端点/账号密码），点「测试连接」确认；
+2. 程序每 `check-interval`（默认 5s）跑一轮：登录 → 拉 peer → 默认规则（PeerID/客户端名黑名单 + 迅雷反吸血）→ 把命中 peer 写入 qB 封禁表，并落库历史；
+3. 页面实时看「当前封禁 / 封禁历史 / 实时日志」，也可手动封禁/解封 IP。
 
-重启后,程序每 `check-interval`（默认 5s）跑一轮：登录→拉 peer→默认规则（PeerID/客户端名黑名单 + 迅雷反吸血）→把命中 peer 写入 qB 封禁表，并落库封禁历史。日志在 `./data/logs/` 与控制台。
+> 也可不开界面、直接编辑 `./data/config/downloaders.yml`（YAML 列表，字段同上）后重启。
 
 ```bash
 cargo test --workspace      # 单元/对拍测试（用 ~/.cargo/bin/cargo）

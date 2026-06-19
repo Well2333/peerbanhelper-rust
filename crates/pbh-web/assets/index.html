@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PeerBanHelper-Rust</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1d24; --fg:#e6e6e6; --mut:#8a90a0; --acc:#4f8cff; --bad:#ff5d5d; --ok:#43c463; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui,sans-serif; }
+  header { padding:12px 20px; background:#13161c; border-bottom:1px solid #262a33; display:flex; align-items:center; gap:16px; }
+  header b { font-size:16px; } header .sp { flex:1; }
+  main { max-width:1000px; margin:0 auto; padding:20px; }
+  .card { background:var(--card); border:1px solid #262a33; border-radius:8px; padding:16px; margin-bottom:18px; }
+  h2 { margin:0 0 12px; font-size:15px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid #262a33; }
+  th { color:var(--mut); font-weight:600; }
+  input,select,button { font:inherit; padding:6px 10px; border-radius:6px; border:1px solid #333a47; background:#0f1218; color:var(--fg); }
+  button { background:var(--acc); border:none; cursor:pointer; color:#fff; }
+  button.ghost { background:transparent; border:1px solid #333a47; color:var(--fg); }
+  button.danger { background:var(--bad); }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .mut { color:var(--mut); } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  #logs { background:#0a0c10; border:1px solid #262a33; border-radius:6px; padding:8px; height:240px; overflow:auto; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; }
+  .pill { padding:1px 7px; border-radius:10px; font-size:12px; background:#23272f; }
+  #login { max-width:360px; margin:80px auto; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <b>PeerBanHelper-Rust</b>
+  <span class="pill" id="ver">—</span>
+  <span class="sp"></span>
+  <span class="mut" id="stat">—</span>
+  <button class="ghost" id="logout">退出</button>
+</header>
+
+<main id="app" class="hidden">
+  <div class="card">
+    <h2>下载器</h2>
+    <table><thead><tr><th>名称</th><th>类型</th><th>端点</th><th></th></tr></thead><tbody id="dlBody"></tbody></table>
+    <h2 style="margin-top:16px">添加 / 编辑</h2>
+    <div class="grid">
+      <input id="d_name" placeholder="名称">
+      <select id="d_type"><option value="qbittorrent">qBittorrent</option><option value="qbittorrentee">qBittorrentEE</option></select>
+      <input id="d_endpoint" placeholder="http://127.0.0.1:8080">
+      <input id="d_user" placeholder="用户名">
+      <input id="d_pass" type="password" placeholder="密码">
+      <input id="d_id" placeholder="id（留空=新增）">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><input type="checkbox" id="d_inc"> 增量封禁</label>
+      <label><input type="checkbox" id="d_shadow"> EE 影子封禁</label>
+      <label><input type="checkbox" id="d_verify" checked> 校验 TLS</label>
+      <label><input type="checkbox" id="d_ignpriv"> 排除私有种子</label>
+      <span class="sp"></span>
+      <button class="ghost" onclick="testDl()">测试连接</button>
+      <button onclick="saveDl()">保存</button>
+    </div>
+    <div id="dlMsg" class="mut" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>当前封禁 <span class="mut" id="banCount"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <input id="b_ip" placeholder="手动封禁 IP">
+      <button onclick="addBan()">封禁</button>
+    </div>
+    <table><thead><tr><th>地址</th><th>模块</th><th>原因</th><th>解封时间</th><th></th></tr></thead><tbody id="banBody"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>封禁历史</h2>
+    <table><thead><tr><th>时间</th><th>IP</th><th>客户端</th><th>模块</th><th>下载器</th></tr></thead><tbody id="hisBody"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>实时日志</h2>
+    <div id="logs"></div>
+  </div>
+</main>
+
+<main id="login" class="hidden">
+  <div class="card">
+    <h2>登录</h2>
+    <p class="mut">首次启动时控制台/日志会打印 API token。</p>
+    <div class="row">
+      <input id="tok" type="password" placeholder="API token" style="flex:1">
+      <button onclick="doLogin()">登录</button>
+    </div>
+    <div id="loginMsg" class="bad" style="margin-top:8px"></div>
+  </div>
+</main>
+
+<script>
+let TOKEN = localStorage.getItem('pbh_token') || '';
+let lastLogSeq = 0;
+
+async function api(path, opts={}) {
+  opts.headers = Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+TOKEN}, opts.headers||{});
+  const r = await fetch(path, opts);
+  if (r.status === 401) { logout(); throw new Error('未授权'); }
+  return r.json();
+}
+function fmt(ms){ return ms? new Date(ms).toLocaleString(): '—'; }
+function el(id){ return document.getElementById(id); }
+
+async function doLogin(){
+  const t = el('tok').value.trim();
+  const r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});
+  const j = await r.json();
+  if (j.ok){ TOKEN=t; localStorage.setItem('pbh_token',t); show(true); refreshAll(); }
+  else el('loginMsg').textContent = '登录失败：'+(j.error||'token 错误');
+}
+function logout(){ TOKEN=''; localStorage.removeItem('pbh_token'); show(false); }
+el('logout').onclick = logout;
+function show(authed){ el('app').classList.toggle('hidden',!authed); el('login').classList.toggle('hidden',authed); }
+
+async function refreshStatus(){
+  try{ const j=await api('/api/status'); const d=j.data;
+    el('ver').textContent='v'+d.version; el('stat').textContent=`下载器 ${d.downloaders} · 封禁 ${d.banned}`;
+  }catch(e){}
+}
+async function loadDownloaders(){
+  const j=await api('/api/downloaders'); const tb=el('dlBody'); tb.innerHTML='';
+  (j.data||[]).forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${esc(c.name||c.id)}</td><td>${c.type}</td><td>${esc(c.endpoint)}</td>
+      <td class="row"><button class="ghost" onclick='editDl(${JSON.stringify(c)})'>编辑</button>
+      <button class="danger" onclick="delDl('${c.id}')">删除</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+function editDl(c){ el('d_id').value=c.id; el('d_name').value=c.name||''; el('d_type').value=c.type; el('d_endpoint').value=c.endpoint||'';
+  el('d_user').value=c.username||''; el('d_pass').value=c.password||''; el('d_inc').checked=!!c['increment-ban'];
+  el('d_shadow').checked=!!c['use-shadow-ban']; el('d_verify').checked=c['verify-ssl']!==false; el('d_ignpriv').checked=!!c['ignore-private']; }
+function dlForm(){ return { id:el('d_id').value.trim(), type:el('d_type').value, name:el('d_name').value.trim(),
+  endpoint:el('d_endpoint').value.trim(), username:el('d_user').value, password:el('d_pass').value,
+  'increment-ban':el('d_inc').checked, 'use-shadow-ban':el('d_shadow').checked,
+  'verify-ssl':el('d_verify').checked, 'ignore-private':el('d_ignpriv').checked }; }
+async function saveDl(){ const j=await api('/api/downloaders',{method:'PUT',body:JSON.stringify(dlForm())});
+  el('dlMsg').textContent=j.ok?'已保存':('错误：'+j.error); if(j.ok){ loadDownloaders(); refreshStatus(); } }
+async function delDl(id){ if(!confirm('删除该下载器？'))return; await api('/api/downloaders/'+id,{method:'DELETE'}); loadDownloaders(); refreshStatus(); }
+async function testDl(){ el('dlMsg').textContent='测试中…'; const j=await api('/api/downloaders/test',{method:'POST',body:JSON.stringify(dlForm())});
+  el('dlMsg').innerHTML = j.data&&j.data.success ? '<span class="ok">连接成功</span>' : '<span class="bad">失败：'+esc((j.data&&j.data.message)||j.error||'')+'</span>'; }
+
+async function loadBans(){
+  const j=await api('/api/bans'); const d=j.data; el('banCount').textContent='('+d.total+')';
+  const tb=el('banBody'); tb.innerHTML='';
+  (d.items||[]).forEach(b=>{ const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${esc(b.address)}</td><td>${esc(b.module)}</td><td>${esc(b.description)}</td><td>${fmt(b.unban_at)}</td>
+      <td><button class="ghost" onclick="unban('${b.ip}')">解封</button></td>`; tb.appendChild(tr); });
+}
+async function addBan(){ const ip=el('b_ip').value.trim(); if(!ip)return; const j=await api('/api/bans',{method:'PUT',body:JSON.stringify({ip})});
+  if(j.ok){ el('b_ip').value=''; loadBans(); } else alert(j.error); }
+async function unban(ip){ await api('/api/bans/'+encodeURIComponent(ip),{method:'DELETE'}); loadBans(); }
+
+async function loadHistory(){ const j=await api('/api/bans/history?page=1&pageSize=30'); const tb=el('hisBody'); tb.innerHTML='';
+  (j.data.items||[]).forEach(h=>{ const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${fmt(h.ban_at)}</td><td>${esc(h.ip)}</td><td>${esc(h.client_name||'')}</td><td>${esc(h.module_name)}</td><td>${esc(h.downloader)}</td>`; tb.appendChild(tr); }); }
+
+async function pollLogs(){ try{ const j=await api('/api/logs?after='+lastLogSeq); const box=el('logs');
+  (j.data.items||[]).forEach(e=>{ lastLogSeq=Math.max(lastLogSeq,e.seq);
+    const line=document.createElement('div'); const t=new Date(e.time_ms).toLocaleTimeString();
+    line.innerHTML=`<span class="mut">${t}</span> <b>${e.level}</b> ${esc(e.message)}`; box.appendChild(line); });
+  if((j.data.items||[]).length) box.scrollTop=box.scrollHeight; }catch(e){} }
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function refreshAll(){ refreshStatus(); loadDownloaders(); loadBans(); loadHistory(); }
+
+// 初始化
+if(TOKEN){ show(true); refreshAll(); } else { show(false); }
+setInterval(()=>{ if(TOKEN){ refreshStatus(); loadBans(); pollLogs(); } }, 3000);
+setInterval(()=>{ if(TOKEN){ loadHistory(); } }, 10000);
+pollLogs();
+</script>
+</body>
+</html>

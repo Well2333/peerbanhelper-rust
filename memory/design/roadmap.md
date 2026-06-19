@@ -91,9 +91,14 @@
 - IPBlackList、IPBlackRuleList（下载/SHA-256/格式解析/前缀 trie/`rule_sub_log`/定时刷新/磁盘回退）。
 - **验收：** GeoIP 对已知 IP 对拍;订阅格式解析单测;trie 命中;更新日志入库。
 
-### M7 — 极简 Web（自研）
-- `axum`：`ApiResp{ok,data,error}` 信封、分页、Bearer 鉴权、约 18 端点;WS `/api/logs/stream`;内置 vanilla 单页（`rust-embed`）;`/blocklist` 导出。
-- **验收：** 单页能登录、看状态、增删下载器、查看/手动封禁、查历史、实时日志、改规则/订阅;接口常规测试。
+### M7 — 极简 Web（自研）✅ 已完成（首版）
+- ✅ `axum`：`ApiResp{ok,data,error}` 信封、分页、Bearer 鉴权中间件（公开 `/`、`/api/auth/login`）。
+- ✅ 端点：login / status / downloaders(list/upsert/delete/test) / bans(list/手动封/解封) / bans.history / logs。
+- ✅ 内置 vanilla 单页（`include_str!` 内嵌）：登录、下载器增删改+测试、当前封禁+手动封/解封、封禁历史、实时日志（3s 轮询）。
+- ✅ 装配进二进制并随启动监听;**curl 端到端验证**（鉴权 401、登录、status、手动封禁/列表均正确）。
+- ⏭ 留待后续：WS 日志流（当前轮询）、`/blocklist` 导出、规则/订阅配置页（M4/M6 模块就绪后）、`rust-embed`（当前 `include_str!` 单文件已够）。
+
+> 🎉 **至此为可在浏览器测试的成品**：运行二进制 → 浏览器登录 → 添加 qB → 自动封禁 + 查看。真实 qB 封禁端到端仍待用户用自己的 qB 验证（见待测报告）。
 
 ### M8 — BTN（完整）
 - HTTP 中间件（固定头 + Bearer + gzip 上行）、config 拉取、new/legacy 分支;下行 HeartBeat/Rules/IPDenyList/IPAllowList(+解封)/IpQuery/Reconfigure;上行 SubmitBans/SubmitSwarm/SubmitHistory（DB 游标 + KV 续传）;轻量 PeerRecording/SwarmTracking 喂数据;PoW;`BtnNetworkOnline`（Allow→SKIP / Deny→BAN / Rules 分类，**无脚本分支**）;每 ability tokio 任务;600s 重试。
