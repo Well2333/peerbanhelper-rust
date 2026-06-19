@@ -39,17 +39,6 @@ name = "pbh-geoip"
 version = "0.1.0"
 
 [[package]]
-name = "pbh-i18n"
-version = "0.1.0"
-
-[[package]]
-name = "pbh-notify"
-version = "0.1.0"
-dependencies = [
- "pbh-domain",
-]
-
-[[package]]
 name = "pbh-rules"
 version = "0.1.0"
 dependencies = [
@@ -66,8 +55,6 @@ dependencies = [
  "pbh-downloader",
  "pbh-engine",
  "pbh-geoip",
- "pbh-i18n",
- "pbh-notify",
  "pbh-rules",
  "pbh-storage",
  "pbh-web",

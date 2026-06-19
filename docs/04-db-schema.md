@@ -1,5 +1,10 @@
 # PeerBanHelper-Rust 数据库 Schema（嵌入式 SQLite）
 
+> **v2 精简表集（见 docs/05）：** 保留 `pcb_address`、`pcb_range`、`banlist`、`history`、
+> `rule_sub_info`、`rule_sub_log`、`metadata`、`peer_records`、`tracked_swarm`(后两者供 BTN 上行)。
+> **砍除** `traffic_journal_v3`、`peer_connection_metrics`、`peer_connection_metrics_track`、`alert`
+> (纯图表/降级为日志)。下表完整列出全部表以备查;打 🔻 者为 v2 砍除。
+
 > 来源：`resources/db/migration/sqlite/V1_1..V1_5` + `databasent/table/*Entity.java` + `mapper/sqlite/*.xml`。
 > Rust 端：单文件 `<dataDir>/persist/peerbanhelper-nt.db`，WAL，`busy_timeout=60000`，写池单连接。迁移用 `sqlx::migrate!` 单个**合并版** `V1__initial.sql`（反映 V1_5 后的最终形态）。
 > 约定：时间戳 = `INTEGER`(epoch millis)；IP/Inet = `TEXT`(规范串)；JSON/TranslationComponent = `TEXT`(serde_json)；bool = `INTEGER`(0/1)；枚举 = `TEXT`。
@@ -33,15 +38,15 @@ PK `id`。`address` TEXT, `port` INT, `torrent_id` INT, `downloader` TEXT, `peer
 唯一：**`(address, torrent_id, downloader)`**（V1_3 去掉了 port）。索引：`address`,`(last_time_seen)`,`(downloader,uploaded,downloaded,first_time_seen,last_time_seen)`,`(downloader,first_time_seen,last_time_seen)`。
 > upsert 含带 offset 的单调累加冲突解决（最难单条 SQL，见下）。
 
-### peer_connection_metrics — 连接指标（聚合）
+### 🔻 peer_connection_metrics — 连接指标（聚合）【v2 砍除】
 PK `id`。`timeframe_at` INT, `downloader` TEXT + 16 个 INT 计数器：`total_connections, incoming_connections, remote_refuse_transfer_to_client, remote_accept_transfer_to_client, local_refuse_transfer_to_peer, local_accept_transfer_to_peer, local_not_interested, question_status, optimistic_unchoke, from_dht, from_pex, from_lsd, from_tracker_or_other, rc4_encrypted, plain_text_encrypted, utp_socket, tcp_socket`。
 唯一：`(timeframe_at, downloader)`。
 
-### peer_connection_metrics_track — 连接指标（逐 peer）
+### 🔻 peer_connection_metrics_track — 连接指标（逐 peer）【v2 砍除】
 PK `id`。`timeframe_at` INT, `downloader` TEXT, `torrent_id` INT, `address` TEXT, `port` INT, `peer_id` TEXT?(V1_4 改可空), `client_name` TEXT?, `last_flags` TEXT?。
 唯一：`(timeframe_at, downloader, torrent_id, address, port)`。
 
-### traffic_journal_v3 — 流量账（小时分桶）
+### 🔻 traffic_journal_v3 — 流量账（小时分桶）【v2 砍除】
 PK `id`。`timestamp` INT(小时桶), `downloader` TEXT + 8 个 INT：`data_overall_uploaded_at_start, data_overall_uploaded, data_overall_downloaded_at_start, data_overall_downloaded, protocol_overall_uploaded_at_start, protocol_overall_uploaded, protocol_overall_downloaded_at_start, protocol_overall_downloaded`。
 唯一：`(timestamp, downloader)`。
 
@@ -51,7 +56,7 @@ PK `rule_id` TEXT（调用方提供）。`enabled` INT(bool), `rule_name` TEXT, 
 ### rule_sub_log — 订阅更新日志
 PK `id`。`rule_id` TEXT, `update_time` INT, `count` INT, `update_type` TEXT(枚举 AUTO/MANUAL)。索引：`(rule_id, update_time DESC)`。
 
-### alert — 告警
+### 🔻 alert — 告警【v2 砍除,降级为日志】
 PK `id`。`create_at` INT, `read_at` INT?, `level` TEXT(INFO/WARN/ERROR/FATAL), `identifier` TEXT, `title` TEXT(JSON), `content` TEXT(JSON)。索引：`(read_at,identifier)`,`(read_at)`,`(create_at,read_at)`。
 
 ### torrents — 种子

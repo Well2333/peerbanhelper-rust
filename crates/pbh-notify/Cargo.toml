@@ -1,9 +1,0 @@
-[package]
-name = "pbh-notify"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-# M9 引入 reqwest / lettre / pulldown-cmark。骨架 std-only：PushProvider 抽象 + 通道枚举。
-[dependencies]
-pbh-domain = { path = "../pbh-domain" }

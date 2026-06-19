@@ -1,4 +1,7 @@
-# PeerBanHelper-Rust API 契约（前端复用基准）
+> ⚠️ **已被 `docs/05-revised-strategy.md` 取代。** v2 战略**弃用现有 Vue 前端**,不再复刻本契约。
+> 本文件保留作为「上游 Java 前端 API」的事实参考(便于理解原系统),新版采用 docs/05 §4 的自研极简 API。
+
+# 上游 Java 前端 API 契约（参考 · 本项目不再复刻）
 
 > 来源：分析 `web/JavalinWebContainer.java` + `module/impl/webapi/*Controller.java` + 前端 `webui/src/service|stores|api`。
 > Rust 端用 `axum` 复刻。**删除标记 `[删除]` 的端点本期不实现**（PBH Plus，用户已确认）。

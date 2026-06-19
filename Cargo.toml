@@ -6,14 +6,12 @@ members = [
     "crates/pbh-domain",
     "crates/pbh-config",
     "crates/pbh-storage",
-    "crates/pbh-i18n",
     "crates/pbh-rules",
     "crates/pbh-downloader",
     "crates/pbh-geoip",
     "crates/pbh-engine",
     "crates/pbh-btn",
     "crates/pbh-web",
-    "crates/pbh-notify",
     "crates/pbh-server",
 ]
 
@@ -59,10 +57,8 @@ ip_network_table = "0.2"
 maxminddb = "0.24"
 # DNS（M4）
 hickory-resolver = "0.24"
-# SMTP（M9）
-lettre = "0.11"
-# Markdown（M9）
-pulldown-cmark = "0.11"
+# 内嵌单页前端（M7）
+rust-embed = "8"
 
 [profile.release]
 opt-level = 3

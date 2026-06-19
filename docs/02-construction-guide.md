@@ -1,4 +1,8 @@
-# PeerBanHelper-Rust 施工指南
+> ⚠️ **已被 `docs/05-revised-strategy.md` 取代(战略转向 v2:弃用 Vue 前端、极简重构)。**
+> 本文件保留作为「忠实移植方案 v1」的参考;里程碑与任务拆解的通用部分仍可借鉴,
+> 但 **M7（复刻 Java Web 契约）整段作废**,以 docs/05 的「极简 Web」为准。
+
+# PeerBanHelper-Rust 施工指南（v1 · 忠实移植 · 已被 docs/05 取代）
 
 > 配套阅读：`01-research-report.md`（架构）、`03-api-contract.md`（端点）、`04-db-schema.md`（库表）。
 > 本指南给出**分阶段里程碑、任务拆解、依赖顺序、验收标准**。每个阶段产出可独立验证。
