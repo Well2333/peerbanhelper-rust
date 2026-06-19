@@ -12,6 +12,7 @@ use pbh_config::ConfigHandle;
 use pbh_domain::LogBuffer;
 use pbh_downloader::DownloaderManager;
 use pbh_engine::BanManager;
+use pbh_geoip::GeoIpProvider;
 use pbh_storage::Db;
 
 pub use envelope::{ApiResp, Page};
@@ -24,6 +25,8 @@ pub struct WebState {
     pub ban_manager: Arc<BanManager>,
     pub db: Db,
     pub logs: Arc<LogBuffer>,
+    /// GeoIP 可选注入（供 profile 热重载时重建 IPBlackList）。
+    pub geoip: Option<Arc<dyn GeoIpProvider>>,
 }
 
 /// 启动 HTTP 服务（阻塞直到出错/关闭）。

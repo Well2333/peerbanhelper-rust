@@ -168,7 +168,13 @@ async fn download_and_parse(
     http: &reqwest::Client,
     url: &str,
 ) -> std::result::Result<Vec<String>, reqwest::Error> {
-    let text = http.get(url).send().await?.error_for_status()?.text().await?;
+    let text = http
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
     Ok(parse_rule_list(&text))
 }
 

@@ -128,7 +128,24 @@ impl Db {
 
     /// 载入 `last_time_seen >= since` 的单 IP 状态（重启续算）。
     pub async fn load_pcb_addresses(&self, since: i64) -> Result<Vec<PcbAddressRow>> {
-        let rows = sqlx::query_as::<_, (String, i64, String, f64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                i64,
+                String,
+                f64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+            ),
+        >(
             "SELECT ip, port, torrent_id, last_report_progress,
                     COALESCE(last_report_uploaded,0), COALESCE(tracking_uploaded_increase_total,0),
                     rewind_counter, progress_difference_counter, first_time_seen, last_time_seen,
@@ -163,7 +180,23 @@ impl Db {
 
     /// 载入 `last_time_seen >= since` 的前缀段状态。
     pub async fn load_pcb_ranges(&self, since: i64) -> Result<Vec<PcbRangeRow>> {
-        let rows = sqlx::query_as::<_, (String, String, f64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                f64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+            ),
+        >(
             "SELECT ip_range, torrent_id, last_report_progress,
                     COALESCE(last_report_uploaded,0), COALESCE(tracking_uploaded_increase_total,0),
                     rewind_counter, progress_difference_counter, first_time_seen, last_time_seen,

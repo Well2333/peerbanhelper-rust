@@ -1108,6 +1108,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipnetwork"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf466541e9d546596ee94f9f69590f89473455f88372423e0008fc1a7daf100e"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1236,6 +1245,18 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
+
+[[package]]
+name = "maxminddb"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6087e5d8ea14861bb7c7f573afbc7be3798d3ef0fae87ec4fd9a4de9a127c3c"
+dependencies = [
+ "ipnetwork",
+ "log",
+ "memchr",
+ "serde",
+]
 
 [[package]]
 name = "md-5"
@@ -1483,6 +1504,7 @@ dependencies = [
  "pbh-config",
  "pbh-domain",
  "pbh-downloader",
+ "pbh-geoip",
  "pbh-rules",
  "pbh-storage",
  "reqwest",
@@ -1495,6 +1517,11 @@ dependencies = [
 [[package]]
 name = "pbh-geoip"
 version = "0.1.0"
+dependencies = [
+ "maxminddb",
+ "serde",
+ "tracing",
+]
 
 [[package]]
 name = "pbh-rules"
@@ -1522,6 +1549,7 @@ dependencies = [
  "pbh-domain",
  "pbh-downloader",
  "pbh-engine",
+ "pbh-geoip",
  "pbh-storage",
  "pbh-web",
  "tokio",
@@ -1552,6 +1580,7 @@ dependencies = [
  "pbh-domain",
  "pbh-downloader",
  "pbh-engine",
+ "pbh-geoip",
  "pbh-storage",
  "serde",
  "serde_json",

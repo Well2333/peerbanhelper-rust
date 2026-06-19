@@ -15,6 +15,7 @@ use pbh_config::{ConfigHandle, Paths};
 use pbh_domain::LogBuffer;
 use pbh_downloader::DownloaderManager;
 use pbh_engine::{build_modules, BanList, BanManager};
+use pbh_geoip::{GeoIpProvider, MaxmindProvider};
 use pbh_storage::Db;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -68,7 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         paths.config_file("downloaders.yml"),
     ));
     let ban_list = Arc::new(BanList::new());
-    let modules = build_modules(&profile, profile.ban_duration, &ban_list, &db);
+    // GeoIP 可选注入：从 <data>/geoip/ 加载 MaxMind mmdb；缺失则降级（ASN/地区检查跳过）。
+    let geoip: Option<Arc<dyn GeoIpProvider>> =
+        MaxmindProvider::load_from_dir(&paths.data_dir().join("geoip"))
+            .map(|p| Arc::new(p) as Arc<dyn GeoIpProvider>);
+    let modules = build_modules(&profile, profile.ban_duration, &ban_list, &db, &geoip);
     let module_count = modules.len();
     let ban_manager = BanManager::new(
         ban_list,
@@ -120,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ban_manager: ctx.ban_manager.clone(),
         db: ctx.db.clone(),
         logs: ctx.logs.clone(),
+        geoip: geoip.clone(),
     };
     let bind = format!("{}:{}", cfg.app.server.address, cfg.app.server.http);
     match bind.parse::<std::net::SocketAddr>() {

@@ -4,5 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# M6 引入 maxminddb / xz2 / csv / reqwest / moka / patricia_tree。骨架 std-only 占位。
 [dependencies]
+maxminddb = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

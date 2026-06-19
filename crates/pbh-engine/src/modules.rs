@@ -10,10 +10,14 @@ use pbh_rules::{
     AntiVampire, ClientNameBlacklist, IdleConnectionDosProtection, MultiDialingBlocker,
     PeerIdBlacklist, ProtectMode, RuleFeatureModule, RuleSet,
 };
+use std::collections::HashSet;
+
+use pbh_geoip::GeoIpProvider;
 use pbh_storage::Db;
 
 use crate::{
-    AutoRangeBan, BanList, IpBlackRuleList, PcbConfig, ProgressCheatBlocker, PtrBlacklist, SubConfig,
+    AutoRangeBan, BanList, IpBlackList, IpBlackRuleList, PcbConfig, ProgressCheatBlocker,
+    PtrBlacklist, SubConfig,
 };
 
 /// 内置默认 PeerID 黑名单（常见离线下载/吸血客户端）。
@@ -50,6 +54,7 @@ pub fn build_modules(
     global_dur: i64,
     ban_list: &Arc<BanList>,
     db: &Db,
+    geoip: &Option<Arc<dyn GeoIpProvider>>,
 ) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();
 
@@ -164,6 +169,33 @@ pub fn build_modules(
         }
     }
 
+    // ip-address-blocker（IP/端口/ASN/地区/城市/网络类型黑名单，默认关闭）
+    if enabled(profile, "ip-address-blocker", false) {
+        let m = "ip-address-blocker";
+        let ips = string_list(profile, m, "ips").unwrap_or_default();
+        let ports: HashSet<u16> = int_list(profile, m, "ports")
+            .into_iter()
+            .filter_map(|v| u16::try_from(v).ok())
+            .collect();
+        let asns: HashSet<u32> = int_list(profile, m, "asns")
+            .into_iter()
+            .filter_map(|v| u32::try_from(v).ok())
+            .collect();
+        let regions: HashSet<String> = str_list(profile, m, "regions").into_iter().collect();
+        let cities: Vec<String> = str_list(profile, m, "cities");
+        let net_types = enabled_net_types(profile, m);
+        out.push(Arc::new(IpBlackList::new(
+            dur(profile, m, global_dur),
+            &ips,
+            ports,
+            asns,
+            regions,
+            cities,
+            net_types,
+            geoip.clone(),
+        )));
+    }
+
     // ip-address-blocker-rules（IP 黑名单订阅，默认关闭）
     if enabled(profile, "ip-address-blocker-rules", false) {
         let m = "ip-address-blocker-rules";
@@ -222,6 +254,45 @@ fn parse_subs(profile: &ProfileConfig, module: &str) -> Vec<SubConfig> {
         });
     }
     out
+}
+
+/// 读模块字段下的整数序列。
+fn int_list(profile: &ProfileConfig, module: &str, field: &str) -> Vec<i64> {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get(field))
+        .and_then(|v| v.as_sequence())
+        .map(|seq| seq.iter().filter_map(|v| v.as_i64()).collect())
+        .unwrap_or_default()
+}
+
+/// 读模块字段下的字符串序列。
+fn str_list(profile: &ProfileConfig, module: &str, field: &str) -> Vec<String> {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get(field))
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 读 `net-type` 子映射中值为 true 的键集合（中国网络类型名）。
+fn enabled_net_types(profile: &ProfileConfig, module: &str) -> HashSet<String> {
+    profile
+        .module_section(module)
+        .and_then(|s| s.get("net-type"))
+        .and_then(|v| v.as_mapping())
+        .map(|map| {
+            map.iter()
+                .filter(|(_, v)| v.as_bool().unwrap_or(false))
+                .filter_map(|(k, _)| k.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// 读模块 section 下的整数字段（缺失/类型不符则用默认）。

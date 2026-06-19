@@ -10,6 +10,7 @@ pbh-rules = { path = "../pbh-rules" }
 pbh-downloader = { path = "../pbh-downloader" }
 pbh-config = { path = "../pbh-config" }
 pbh-storage = { path = "../pbh-storage" }
+pbh-geoip = { path = "../pbh-geoip" }
 ip_network = "0.4"
 ip_network_table = { workspace = true }
 ipnet = { workspace = true }
