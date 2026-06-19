@@ -18,7 +18,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+# 遵循上游 PeerBanHelper（PBH-BTN/PeerBanHelper）的 GPL-3.0 许可。
+license = "GPL-3.0-or-later"
 # 现代依赖（hashbrown 0.17 等）内部用 edition2024,需 cargo/rustc >= 1.85。
 # 实测使用 rustup stable 1.96。本仓 edition 仍为 2021。
 rust-version = "1.85"
