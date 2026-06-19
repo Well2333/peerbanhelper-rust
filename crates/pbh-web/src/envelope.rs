@@ -59,3 +59,40 @@ pub struct Page<T> {
     pub total: i64,
     pub items: Vec<T>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ok_serializes_with_data_no_error() {
+        let j = serde_json::to_string(&ApiResp::ok(42)).unwrap();
+        assert_eq!(j, r#"{"ok":true,"data":42}"#);
+    }
+
+    #[test]
+    fn ok_empty_omits_data_and_error() {
+        let j = serde_json::to_string(&ApiResp::ok_empty()).unwrap();
+        assert_eq!(j, r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn err_serializes_with_error() {
+        let j = serde_json::to_string(&ApiResp::<()>::err("未授权")).unwrap();
+        assert_eq!(j, r#"{"ok":false,"error":"未授权"}"#);
+    }
+
+    #[test]
+    fn page_shape() {
+        let p = Page {
+            page: 1,
+            size: 20,
+            total: 100,
+            items: vec!["a", "b"],
+        };
+        let j = serde_json::to_string(&ApiResp::ok(p)).unwrap();
+        assert!(j.contains(r#""page":1"#));
+        assert!(j.contains(r#""total":100"#));
+        assert!(j.contains(r#""items":["a","b"]"#));
+    }
+}

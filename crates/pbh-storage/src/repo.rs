@@ -23,6 +23,8 @@ pub struct NewBanHistory {
     pub description: String,
     pub flags: Option<String>,
     pub downloader: String,
+    /// GeoIP JSON（IpGeoData）;GeoIP 不可用时 None。
+    pub peer_geoip: Option<String>,
 }
 
 /// 封禁历史的展示行（供 `/api/bans/history`）。
@@ -76,8 +78,8 @@ impl Db {
             "INSERT INTO history(
                 ban_at, unban_at, ip, port, peer_id, peer_client_name,
                 peer_uploaded, peer_downloaded, peer_progress, downloader_progress,
-                torrent_id, module_name, rule_name, description, flags, downloader)
-             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                torrent_id, module_name, rule_name, description, flags, downloader, peer_geoip)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(h.ban_at)
         .bind(h.unban_at)
@@ -95,6 +97,7 @@ impl Db {
         .bind(&h.description)
         .bind(&h.flags)
         .bind(&h.downloader)
+        .bind(&h.peer_geoip)
         .execute(self.pool())
         .await?;
         Ok(())
@@ -211,6 +214,7 @@ mod tests {
             description: "test".into(),
             flags: Some("D".into()),
             downloader: "d1".into(),
+            peer_geoip: None,
         })
         .await
         .unwrap();

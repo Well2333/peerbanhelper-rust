@@ -104,3 +104,35 @@ impl GeoIpProvider for MaxmindProvider {
         Some(d)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_returns_none_without_files() {
+        // 不存在的 mmdb → 降级(None)。
+        assert!(MaxmindProvider::load(
+            Some(Path::new("/nonexistent/City.mmdb")),
+            Some(Path::new("/nonexistent/ASN.mmdb")),
+        )
+        .is_none());
+        // 空目录 → None。
+        let dir = std::env::temp_dir().join("pbh-geoip-empty-test");
+        let _ = std::fs::create_dir_all(&dir);
+        assert!(MaxmindProvider::load_from_dir(&dir).is_none());
+    }
+
+    #[test]
+    fn ipgeodata_serializes() {
+        let d = IpGeoData {
+            country_iso: Some("CN".into()),
+            city_name: Some("Shanghai".into()),
+            asn: Some(4134),
+            ..Default::default()
+        };
+        let j = serde_json::to_string(&d).unwrap();
+        assert!(j.contains("\"country_iso\":\"CN\""));
+        assert!(j.contains("\"asn\":4134"));
+    }
+}

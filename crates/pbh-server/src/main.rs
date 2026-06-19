@@ -116,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         profile.ban_duration,
         &profile.ignore_peers_from_addresses,
         track_swarm,
+        geoip.clone(),
     );
 
     // 6. 装配上下文
