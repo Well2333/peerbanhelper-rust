@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 pbh-domain = { path = "../pbh-domain" }
+serde = { workspace = true }
 sqlx = { workspace = true, features = ["macros", "migrate"] }
 tokio = { workspace = true }
 tracing = { workspace = true }

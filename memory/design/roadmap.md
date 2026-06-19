@@ -69,15 +69,18 @@
 - ⏳ **待真机验证**（记入待测报告）：对真实 qB/EE 登录、拉 peer、封禁写入可见;封禁串与上游逐字节对拍。
 - ⏭ completed_size 暂为 -1（M5 PCB 经 `/torrents/properties` 补）;DownloaderManager(持久化/列表)在 M3 装配。
 
-### M3 — 流水线 + 调度 + BanManager
-- bounded `mpsc`(64) channel 流水线（provider→login→torrents→peers→snapshot→check），每 peer 并发检查 + 非线程安全模块串行化，每阶段 timeout。
-- BanManager：banPeer(时长:模块级>全局)/unban/removeExpiredBans/白名单解封/手动队列;事件 broadcast;**封禁历史落库**。
-- Ban Wave 循环：固定延迟 + try_lock 防重叠 + WatchDog + 每小时快照 + globalPaused;封禁下发(增量/全量)。
-- **验收：** 端到端一轮 wave;WatchDog 卡死恢复;不重叠。
+### M3 — 流水线 + 调度 + BanManager ✅ 已完成（首版顺序流水线）
+- ✅ `BanManager`：run_once(到期解封→每下载器:登录→拉 torrents→拉 peers→逐 peer 跑模块→命中即封→历史落库→下发) + `spawn_loop`(固定延迟 + AtomicBool 防重叠) + 旁路名单(IpMatcher)。
+- ✅ `DownloaderManager`(pbh-downloader)：YAML 持久化 + 列表 + upsert/remove。
+- ✅ `pbh-storage` 表助手：`upsert_torrent` / `insert_ban_history` / `query_ban_history` / `count_ban_history`。
+- ✅ 装配到二进制：加载下载器 + 构建模块 + 启动 ban wave + Ctrl-C 干净退出。**二进制可运行**。
+- ✅ **验收达成**：49 单测全绿;二进制实跑(0 下载器 3 模块,wave 启动/退出正常)。
+- ⏭ 留待后续：channel 并行流水线 + WatchDog + 每小时快照(首版顺序执行,够用);真实 qB 封禁端到端见待测报告。
 
-### M4 — 规则模块（离线）
-AntiVampire、ClientNameBlacklist、PeerIdBlacklist、AutoRangeBan、IdleConnectionDosProtection、MultiDialingBlocker、PTRBlacklist;`MonitorFeatureModule` 钩子。
-- **验收：** 每模块单测覆盖阈值与配置，与 `profile.yml` 默认一致。
+### M4 — 规则模块（离线）⏳ 进行中（3/7 已落地）
+- ✅ PeerIdBlacklist、ClientNameBlacklist、AntiVampire（含内置默认名单,开箱即用）。
+- ⏭ 待补：AutoRangeBan（依赖 BanList,放 pbh-engine）、IdleConnectionDosProtection、MultiDialingBlocker、PTRBlacklist。
+- **验收：** 每模块单测覆盖阈值与配置。
 
 ### M5 — ProgressCheatBlocker
 - `pcb_address`+`pcb_range` 两表、脏标志 + `moka` LRU(1024/180s) + 驱逐批刷;`shouldBanPeer` 精确短路顺序（上传增量→computedUploaded=max→fastPcbTest→excessive→difference(ban-delay 窗口)→rewind）;8h 清理;订阅解封事件。

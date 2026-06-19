@@ -4,6 +4,7 @@
 //! 协议细节见 `memory/design/architecture-analysis.md` §2.2，封禁串须与上游字节级一致。
 //! v2 精简：trait 只含与封禁相关的能力（无 speed-limiter / listen_port / NAT）。
 
+mod manager;
 mod qbittorrent;
 
 use std::collections::BTreeSet;
@@ -13,6 +14,7 @@ use async_trait::async_trait;
 use pbh_domain::{Peer, Torrent};
 use serde::{Deserialize, Serialize};
 
+pub use manager::DownloaderManager;
 pub use qbittorrent::QBittorrentClient;
 
 /// 下载器交互错误。

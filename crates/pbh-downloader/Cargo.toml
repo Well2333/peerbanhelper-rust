@@ -10,6 +10,7 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = "0.1"
+serde_yaml = { workspace = true }
 ipnet = { workspace = true }
 semver = "1"
 thiserror = { workspace = true }
@@ -17,4 +18,4 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-serde_yaml = { workspace = true }
+tempfile = "3"

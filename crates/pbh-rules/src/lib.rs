@@ -14,19 +14,9 @@
 pub mod cache;
 pub mod ip_matcher;
 pub mod matcher;
+pub mod module;
 
 pub use cache::ModuleMatchCache;
 pub use ip_matcher::IpMatcher;
 pub use matcher::{MatchOutcome, Matcher, RuleParseError, RuleSet, StringRule};
-
-/// 规则模块统一接口（对应 Java `RuleFeatureModule`）。
-///
-/// 依赖抽象、不依赖具体（见守则第 9 条）：引擎/模块通过该 trait 接入流水线。
-pub trait RuleModule: Send + Sync {
-    /// 模块配置名（`profile.yml` 的 `module.<name>`）。
-    fn config_name(&self) -> &str;
-
-    /// 对单个 peer 做检查。骨架阶段签名占位，M3 接入 `pbh-engine` 时定稿
-    /// （加入 `&Torrent, &Peer, &dyn Downloader` 与 `&AppContext`）。
-    fn check_stub(&self) -> pbh_domain::CheckResult;
-}
+pub use module::{AntiVampire, ClientNameBlacklist, PeerIdBlacklist, RuleFeatureModule};

@@ -8,9 +8,13 @@
 mod context;
 mod logging;
 
+use std::sync::Arc;
+
 use context::AppContext;
 use pbh_config::{ConfigHandle, Paths};
 use pbh_domain::LogBuffer;
+use pbh_downloader::DownloaderManager;
+use pbh_engine::{build_modules, BanList, BanManager};
 use pbh_storage::Db;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -58,18 +62,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 5. 装配上下文
+    // 5. 下载器管理器 + 规则模块 + BanManager
+    let profile = config.current().profile.clone();
+    let downloaders = Arc::new(DownloaderManager::load(
+        paths.config_file("downloaders.yml"),
+    ));
+    let modules = build_modules(&profile, profile.ban_duration);
+    let module_count = modules.len();
+    let ban_list = Arc::new(BanList::new());
+    let ban_manager = BanManager::new(
+        ban_list,
+        downloaders.clone(),
+        modules,
+        db.clone(),
+        profile.ban_duration,
+        &profile.ignore_peers_from_addresses,
+    );
+
+    // 6. 装配上下文
     let ctx = AppContext {
         paths,
         config,
         db,
         logs,
+        downloaders,
+        ban_manager,
     };
 
-    // 6. 状态
+    // 7. 状态
     let cfg = ctx.config.current();
     tracing::info!(
-        "地基就绪：监听 {}:{} | ban-wave {}ms | 默认封禁 {}ms | 安装ID {}",
+        "就绪：监听 {}:{} | ban-wave {}ms | 默认封禁 {}ms | 安装ID {}",
         cfg.app.server.address,
         cfg.app.server.http,
         cfg.profile.check_interval,
@@ -77,13 +100,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         installation_id
     );
     tracing::info!(
-        "数据库 {} | 日志缓冲 {} 条",
+        "下载器 {} 个 | 启用规则模块 {} 个 | 数据库 {} | 日志缓冲 {} 条",
+        ctx.downloaders.count(),
+        module_count,
         ctx.paths.db_file().display(),
         ctx.logs.last_seq()
     );
-    tracing::info!("M0 完成。后续里程碑：M1 领域模型+规则引擎 → M2 下载器 → M3 流水线/调度 …");
 
-    // M0 到此为止（尚未启动 Web / Ban Wave）。干净退出。
+    // 8. 启动 Ban Wave 循环
+    let _wave = ctx
+        .ban_manager
+        .clone()
+        .spawn_loop(cfg.profile.check_interval as u64);
+    tracing::info!("Ban Wave 已启动。按 Ctrl-C 退出。（Web 界面将在 M7 接入）");
+
+    // 等待退出信号。
+    tokio::signal::ctrl_c().await.ok();
+    tracing::info!("收到退出信号，正在关闭…");
     ctx.db.close().await;
     Ok(())
 }

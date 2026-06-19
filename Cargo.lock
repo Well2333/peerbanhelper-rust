@@ -1274,6 +1274,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -1286,7 +1287,14 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "parking_lot",
+ "pbh-config",
  "pbh-domain",
+ "pbh-downloader",
+ "pbh-rules",
+ "pbh-storage",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
  "tracing",
 ]
 
@@ -1317,6 +1325,8 @@ dependencies = [
  "getrandom 0.2.17",
  "pbh-config",
  "pbh-domain",
+ "pbh-downloader",
+ "pbh-engine",
  "pbh-storage",
  "tokio",
  "tracing",
@@ -1329,6 +1339,7 @@ name = "pbh-storage"
 version = "0.1.0"
 dependencies = [
  "pbh-domain",
+ "serde",
  "sqlx",
  "tempfile",
  "thiserror 1.0.69",
