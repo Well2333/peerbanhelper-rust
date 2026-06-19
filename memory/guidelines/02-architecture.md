@@ -26,6 +26,8 @@
 - **热重载**：`tokio::sync::watch` 广播配置变更，组件订阅。
 - **SQLite 单写者**：写池 `max_connections(1)`，WAL 下读可并发；清理走单线程后台 + 分块短事务（LIMIT 200）避免长写锁。
 
-## 等价性边界（必须字节级一致的产出）
+## 等价性边界（必须与上游一致的产出）
 
-下载器封禁串（`banned_IPs`/`peers`/`shadow_banned_IPs`）、规则引擎判定、BTN 上行报文、关键 API JSON、PCB 决策。这些处建 golden fixture 对拍（见 03 规范）。
+下载器封禁串（`banned_IPs`/`peers`/`shadow_banned_IPs`）、规则引擎判定、BTN 上下行报文、PCB 决策。这些处建 golden fixture 对拍（见 03 规范）。
+
+> v2：**自研 API/UI 不再要求与原版一致**（已弃用 Vue 前端），故 API JSON 不在对拍范围;i18n（TranslationComponent）随 v2 作废，后端用单语言纯字符串。

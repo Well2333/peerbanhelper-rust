@@ -10,9 +10,10 @@
 
 ## 序列化对齐（硬约束）
 
-面向前端 / BTN / 下载器的 JSON 字段名与类型**必须与上游 Gson 输出一致**：
+面向 **BTN / 下载器** 的 JSON 字段名与类型**必须与上游 Gson 输出一致**：
 - 用 `#[serde(rename = "...")]` 对齐 `@SerializedName`；时间戳多为 epoch millis（`i64` 数字）。
-- 前端契约对象：`TranslationComponent { key, params[] }`、`IpGeoData`、`StdResp { success, message, data }`、分页 `{ page, size, total, results }`。
+- v2：面向**自有 API** 的 JSON 由本项目自定义（信封 `ApiResp { ok, data, error }`、分页 `{ page, size, total, items }`），**不**与上游 Gson 兼容，无需对齐。
+- 已弃用 `TranslationComponent`（无 i18n）。`IpGeoData` 仍为内部结构（GeoIP 输出）。
 
 ## 等价性对拍（关键路径强制）
 
@@ -20,7 +21,7 @@
 1. qB 封禁写入串（含 IPv6 规范化、CIDR、shadowban）。
 2. 规则引擎对 `profile.yml` 默认规则的判定。
 3. BTN 上行报文（解 gzip 后字段/类型）。
-4. 关键 API 响应 JSON（manifest / bans / statistic / general.status）。
+4. BTN 上下行报文（解 gzip 后字段/类型）。（自有 API 不在对拍范围，走常规接口测试。）
 5. PCB 序列回放 → 相同决策与 DB 状态。
 
 ## TDD / 测试政策（守则第 8 条）
