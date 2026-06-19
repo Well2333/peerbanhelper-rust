@@ -470,26 +470,35 @@ async function saveProfile(){
   else el('ruleMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
 }
 
-/* ---- 日志 ---- */
-async function pollLogs(){
-  try{ const j=await api('/api/logs?after='+lastLogSeq); const box=el('logs'); const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
-    (j.data.items||[]).forEach(e=>{ lastLogSeq=Math.max(lastLogSeq,e.seq);
-      const ln=document.createElement('div'); ln.className='ln';
-      ln.innerHTML=`<span class="mut">${fmtT(e.time_ms)}</span> <span class="lv ${esc(e.level)}">${esc(e.level)}</span> ${esc(e.message)}`;
-      box.appendChild(ln); });
-    while(box.childElementCount>500) box.removeChild(box.firstChild);
-    if(atBottom) box.scrollTop=box.scrollHeight;
-  }catch(e){}
+/* ---- 日志（WebSocket 实时流，断线自动重连）---- */
+let logWs=null;
+function appendLog(e){
+  const box=el('logs'); const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
+  const ln=document.createElement('div'); ln.className='ln';
+  ln.innerHTML=`<span class="mut">${fmtT(e.time_ms)}</span> <span class="lv ${esc(e.level)}">${esc(e.level)}</span> ${esc(e.message)}`;
+  box.appendChild(ln);
+  while(box.childElementCount>500) box.removeChild(box.firstChild);
+  if(atBottom) box.scrollTop=box.scrollHeight;
 }
+function connectLogWs(){
+  if(!TOKEN || logWs) return;
+  const proto = location.protocol==='https:'?'wss':'ws';
+  logWs = new WebSocket(`${proto}://${location.host}/api/logs/stream?token=${encodeURIComponent(TOKEN)}&offset=${lastLogSeq}`);
+  logWs.onmessage = ev => { try{ const o=JSON.parse(ev.data); lastLogSeq=Math.max(lastLogSeq,o.seq); appendLog(o); }catch(e){} };
+  logWs.onclose = () => { logWs=null; if(TOKEN) setTimeout(connectLogWs, 3000); };
+  logWs.onerror = () => { try{ logWs.close(); }catch(e){} };
+}
+function stopLogWs(){ if(logWs){ try{logWs.onclose=null; logWs.close();}catch(e){} logWs=null; } }
 
-/* ---- 轮询 ---- */
-function startPoll(){ stopPoll(); pollLogs(); pollTimer=setInterval(()=>{
+/* ---- 轮询（状态/封禁；日志走 WS）---- */
+function startPoll(){ stopPoll(); connectLogWs(); refreshDashboard(); pollTimer=setInterval(()=>{
   if(document.hidden) return;
   const cur=(location.hash||'#dashboard').slice(1);
-  refreshDashboard(); pollLogs();
+  refreshDashboard();
   if(cur==='bans') loadBans();
+  connectLogWs(); // 确保断线后重连
 }, 3000); }
-function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } stopLogWs(); }
 
 /* ---- 初始化 ---- */
 if(TOKEN){ show(true); route(); startPoll(); } else { show(false); }

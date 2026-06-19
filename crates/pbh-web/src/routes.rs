@@ -2,6 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
@@ -23,10 +24,10 @@ pub fn router(state: WebState) -> Router {
             "/api/downloaders",
             get(list_downloaders).put(upsert_downloader),
         )
-        .route("/api/downloaders/{id}", delete(delete_downloader))
+        .route("/api/downloaders/:id", delete(delete_downloader))
         .route("/api/downloaders/test", post(test_downloader))
         .route("/api/bans", get(list_bans).put(add_ban))
-        .route("/api/bans/{ip}", delete(remove_ban))
+        .route("/api/bans/:ip", delete(remove_ban))
         .route("/api/bans/history", get(ban_history))
         .route("/api/config/profile", get(get_profile).put(put_profile))
         .route("/api/sub/rules", get(list_sub_rules))
@@ -39,8 +40,56 @@ pub fn router(state: WebState) -> Router {
         .route("/api/auth/login", post(login))
         // 公开纯文本封禁列表,供下载器/外部消费（无需鉴权）。
         .route("/blocklist/ip", get(blocklist_ip))
+        // WS 实时日志流（浏览器 WS 不能设头,token 走 query）。
+        .route("/api/logs/stream", get(logs_stream))
         .merge(protected)
         .with_state(state)
+}
+
+#[derive(Deserialize)]
+struct WsQuery {
+    token: String,
+    #[serde(default)]
+    offset: u64,
+}
+
+/// WS 升级 + token 校验（query 参数）。
+async fn logs_stream(
+    ws: WebSocketUpgrade,
+    State(st): State<WebState>,
+    Query(q): Query<WsQuery>,
+) -> Response {
+    let token = st.config.current().app.server.token.clone();
+    if token.is_empty() || q.token != token {
+        return unauthorized();
+    }
+    ws.on_upgrade(move |socket| log_socket(socket, st, q.offset))
+}
+
+/// 推送 `seq > offset` 的日志,之后周期推送新增（700ms 轮询环形缓冲）。
+async fn log_socket(mut socket: WebSocket, st: WebState, mut last: u64) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_millis(700));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {
+                for e in st.logs.since(last) {
+                    last = last.max(e.seq);
+                    let msg = json!({
+                        "seq": e.seq, "time_ms": e.time_ms, "level": e.level, "message": e.message
+                    }).to_string();
+                    if socket.send(Message::Text(msg)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+            inbound = socket.recv() => {
+                match inbound {
+                    None | Some(Ok(Message::Close(_))) | Some(Err(_)) => return,
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 /// 纯文本导出当前封禁的 IP/CIDR（每行一条）。
