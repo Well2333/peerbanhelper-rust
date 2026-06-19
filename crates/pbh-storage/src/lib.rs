@@ -5,8 +5,10 @@
 //!
 //! M0：连接 + pragma + 迁移 + KV(metadata)。后续里程碑在此之上加各表服务。
 
+pub mod pcb;
 pub mod repo;
 
+pub use pcb::{PcbAddressRow, PcbAnalysis, PcbRangeRow};
 pub use repo::{BanHistoryRow, NewBanHistory};
 
 use std::path::Path;

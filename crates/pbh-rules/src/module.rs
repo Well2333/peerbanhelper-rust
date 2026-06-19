@@ -15,6 +15,8 @@ pub trait RuleFeatureModule: Send + Sync {
     fn config_name(&self) -> &'static str;
     /// 检查单个 peer。
     fn should_ban(&self, torrent: &Torrent, peer: &Peer) -> CheckResult;
+    /// 某 IP 被解封时的回调（默认空实现）。PCB 用它重置该 IP 的作弊跟踪状态，给其重新开始的机会。
+    fn on_unban(&self, _ip: std::net::IpAddr) {}
 }
 
 fn ban(module: &'static str, duration_ms: i64, rule: String, reason: String) -> CheckResult {

@@ -7,14 +7,17 @@
 //! 双视图状态：单 IP（`pcb_address`）+ 前缀段（`pcb_range`，跨 IP 聚合，防止换 IP 绕过）。
 //! 本文件是**内存核心 + 判定状态机**；DB 持久化（载入/批刷/清理/解封重置）在后续提交附加。
 
+use std::net::IpAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ip_network::IpNetwork;
 use moka::sync::Cache;
 use parking_lot::Mutex;
 use pbh_domain::{CheckResult, Peer, PeerAction, Torrent};
 use pbh_rules::RuleFeatureModule;
+use pbh_storage::{Db, PcbAddressRow, PcbAnalysis, PcbRangeRow};
 
 const MODULE: &str = "ProgressCheatBlocker";
 
@@ -40,6 +43,10 @@ pub struct PcbConfig {
     pub fast_pcb_test_percentage: f64,
     /// fast-pcb-test 的 BAN_FOR_DISCONNECT 时长（ms）。
     pub fast_pcb_test_block_duration: i64,
+    /// 是否持久化到 DB（重启续算）。
+    pub enable_persist: bool,
+    /// 持久化数据保留时长（ms）。
+    pub persist_duration: i64,
 }
 
 impl Default for PcbConfig {
@@ -56,6 +63,8 @@ impl Default for PcbConfig {
             max_wait_duration: 30_000,
             fast_pcb_test_percentage: 0.1,
             fast_pcb_test_block_duration: 15_000,
+            enable_persist: true,
+            persist_duration: 1_209_600_000, // 14 天
         }
     }
 }
@@ -328,13 +337,17 @@ fn run_checks(
 
 // ---------------- 模块（缓存包装）----------------
 
-/// 进度作弊检测模块（内存核心）。持久化由 [`crate::pcb_persist`] 附加。
+type EntryCache = Cache<String, Arc<Mutex<PcbEntry>>>;
+
+/// 进度作弊检测模块。内存核心 + 可选 DB 持久化（重启续算 / 批刷 / 8h 清理）。
 pub struct ProgressCheatBlocker {
     cfg: PcbConfig,
     /// `torrent_id|ip:port` → 单 IP 状态。
-    pub(crate) addr_cache: Cache<String, Arc<Mutex<PcbEntry>>>,
+    addr_cache: EntryCache,
     /// `torrent_id|prefix` → 段聚合状态。
-    pub(crate) range_cache: Cache<String, Arc<Mutex<PcbEntry>>>,
+    range_cache: EntryCache,
+    /// 后台维护任务停止标志（Drop 时置位）。
+    shutdown: Arc<AtomicBool>,
 }
 
 impl ProgressCheatBlocker {
@@ -343,7 +356,49 @@ impl ProgressCheatBlocker {
             cfg,
             addr_cache: Cache::builder().max_capacity(8192).build(),
             range_cache: Cache::builder().max_capacity(8192).build(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// 带持久化构造：启动后台任务（首次载入历史 → 周期批刷 → 8h 清理），返回 `Arc`。
+    pub fn with_persistence(cfg: PcbConfig, db: Db) -> Arc<Self> {
+        let persist_duration = cfg.persist_duration;
+        let me = Arc::new(Self::new(cfg));
+        let addr = me.addr_cache.clone();
+        let range = me.range_cache.clone();
+        let shutdown = me.shutdown.clone();
+        // 任务只持有缓存/db/flag 的克隆，不持有模块 Arc —— 模块被替换(热重载)即 Drop→停任务。
+        tokio::spawn(async move {
+            let since = now_ms() - persist_duration;
+            load_into(&db, &addr, &range, since).await;
+            let mut last_cleanup = now_ms();
+            loop {
+                // 60s 一刷,期间每秒检查停止标志。
+                for _ in 0..60 {
+                    if shutdown.load(Ordering::Relaxed) {
+                        flush(&db, &addr, &range).await;
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                flush(&db, &addr, &range).await;
+                if now_ms() - last_cleanup > 8 * 3600 * 1000 {
+                    match db.cleanup_pcb(now_ms() - persist_duration).await {
+                        Ok(n) if n > 0 => tracing::info!("PCB 清理过期记录 {n} 条"),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!("PCB 清理失败: {e}"),
+                    }
+                    last_cleanup = now_ms();
+                }
+            }
+        });
+        me
+    }
+}
+
+impl Drop for ProgressCheatBlocker {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
     }
 }
 
@@ -378,6 +433,153 @@ impl RuleFeatureModule for ProgressCheatBlocker {
         let mut a = addr.lock();
         let mut r = range.lock();
         evaluate(&self.cfg, &mut a, &mut r, torrent, peer, now)
+    }
+
+    fn on_unban(&self, ip: IpAddr) {
+        // 解封后清除该 IP 的单点跟踪状态,给其重新开始的机会（段聚合状态保留）。
+        let needle = if ip.is_ipv6() {
+            format!("|[{ip}]:")
+        } else {
+            format!("|{ip}:")
+        };
+        let keys: Vec<String> = self
+            .addr_cache
+            .iter()
+            .map(|(k, _)| (*k).clone())
+            .filter(|k| k.contains(&needle))
+            .collect();
+        for k in keys {
+            self.addr_cache.invalidate(&k);
+        }
+    }
+}
+
+// ---------------- 持久化辅助 ----------------
+
+fn to_analysis(e: &PcbEntry) -> PcbAnalysis {
+    PcbAnalysis {
+        last_report_progress: e.last_report_progress,
+        last_report_uploaded: e.last_report_uploaded,
+        tracking_uploaded_increase_total: e.tracking_uploaded_increase_total,
+        rewind_counter: e.rewind_counter,
+        progress_difference_counter: e.progress_difference_counter,
+        first_time_seen: e.first_time_seen,
+        last_time_seen: e.last_time_seen,
+        ban_delay_window_end_at: e.ban_delay_window_end_at,
+        fast_pcb_test_execute_at: e.fast_pcb_test_execute_at,
+        last_torrent_completed_size: e.last_torrent_completed_size,
+    }
+}
+
+fn entry_from_analysis(a: &PcbAnalysis) -> PcbEntry {
+    PcbEntry {
+        last_report_progress: a.last_report_progress,
+        last_report_uploaded: a.last_report_uploaded,
+        tracking_uploaded_increase_total: a.tracking_uploaded_increase_total,
+        rewind_counter: a.rewind_counter,
+        progress_difference_counter: a.progress_difference_counter,
+        first_time_seen: a.first_time_seen,
+        last_time_seen: a.last_time_seen,
+        ban_delay_window_end_at: a.ban_delay_window_end_at,
+        fast_pcb_test_execute_at: a.fast_pcb_test_execute_at,
+        last_torrent_completed_size: a.last_torrent_completed_size,
+        dirty: false,
+    }
+}
+
+/// 还原 raw_ip 串（与 `PeerAddress::cache_key` 同格式）。
+fn raw_ip(ip: &str, port: i64) -> String {
+    if ip.contains(':') {
+        format!("[{ip}]:{port}")
+    } else {
+        format!("{ip}:{port}")
+    }
+}
+
+/// 解析 addr key `torrent_id|rawip` → (ip, port, torrent_id)。
+fn parse_addr_key(key: &str) -> Option<(String, i64, String)> {
+    let (tid, rawip) = key.split_once('|')?;
+    let (ip, port) = if let Some(rest) = rawip.strip_prefix('[') {
+        // v6: [addr]:port
+        let idx = rest.find("]:")?;
+        (rest[..idx].to_string(), rest[idx + 2..].parse().ok()?)
+    } else {
+        let (ip, port) = rawip.rsplit_once(':')?;
+        (ip.to_string(), port.parse().ok()?)
+    };
+    Some((ip, port, tid.to_string()))
+}
+
+/// 解析 range key `torrent_id|prefix` → (ip_range, torrent_id)。
+fn parse_range_key(key: &str) -> Option<(String, String)> {
+    let (tid, prefix) = key.split_once('|')?;
+    Some((prefix.to_string(), tid.to_string()))
+}
+
+/// 把脏条目批量落库（清 dirty）。
+async fn flush(db: &Db, addr: &EntryCache, range: &EntryCache) {
+    let mut arows = Vec::new();
+    for (k, v) in addr.iter() {
+        let mut e = v.lock();
+        if !e.dirty {
+            continue;
+        }
+        if let Some((ip, port, tid)) = parse_addr_key(&k) {
+            arows.push(PcbAddressRow {
+                ip,
+                port,
+                torrent_id: tid,
+                a: to_analysis(&e),
+            });
+            e.dirty = false;
+        }
+    }
+    if let Err(e) = db.upsert_pcb_addresses(&arows).await {
+        tracing::warn!("PCB addr 落库失败: {e}");
+    }
+    let mut rrows = Vec::new();
+    for (k, v) in range.iter() {
+        let mut e = v.lock();
+        if !e.dirty {
+            continue;
+        }
+        if let Some((ip_range, tid)) = parse_range_key(&k) {
+            rrows.push(PcbRangeRow {
+                ip_range,
+                torrent_id: tid,
+                a: to_analysis(&e),
+            });
+            e.dirty = false;
+        }
+    }
+    if let Err(e) = db.upsert_pcb_ranges(&rrows).await {
+        tracing::warn!("PCB range 落库失败: {e}");
+    }
+}
+
+/// 从 DB 载入近期状态到缓存（重启续算）。
+async fn load_into(db: &Db, addr: &EntryCache, range: &EntryCache, since: i64) {
+    match db.load_pcb_addresses(since).await {
+        Ok(rows) => {
+            let n = rows.len();
+            for r in rows {
+                let key = format!("{}|{}", r.torrent_id, raw_ip(&r.ip, r.port));
+                addr.insert(key, Arc::new(Mutex::new(entry_from_analysis(&r.a))));
+            }
+            if n > 0 {
+                tracing::info!("PCB 载入 {n} 条单 IP 历史状态");
+            }
+        }
+        Err(e) => tracing::warn!("PCB 载入 addr 失败: {e}"),
+    }
+    match db.load_pcb_ranges(since).await {
+        Ok(rows) => {
+            for r in rows {
+                let key = format!("{}|{}", r.torrent_id, r.ip_range);
+                range.insert(key, Arc::new(Mutex::new(entry_from_analysis(&r.a))));
+            }
+        }
+        Err(e) => tracing::warn!("PCB 载入 range 失败: {e}"),
     }
 }
 

@@ -162,7 +162,16 @@ impl BanManager {
 
     /// 手动解封。
     pub fn manual_unban(&self, ip: &str) -> bool {
-        self.ban_list.unban(ip).is_some()
+        let removed = self.ban_list.unban(ip).is_some();
+        if removed {
+            if let Ok(addr) = ip.trim().parse::<IpAddr>() {
+                let modules = self.modules.read().unwrap();
+                for m in modules.iter() {
+                    m.on_unban(addr);
+                }
+            }
+        }
+        removed
     }
 
     /// 对单个 peer 跑所有模块，合并结果（Skip 短路）。
@@ -198,6 +207,13 @@ impl BanManager {
             self.stats
                 .unbanned_peers
                 .fetch_add(expired.len() as u64, Ordering::Relaxed);
+            // 通知各模块（PCB 重置该 IP 跟踪状态）。
+            let modules = self.modules.read().unwrap();
+            for meta in &expired {
+                for m in modules.iter() {
+                    m.on_unban(meta.peer.ip);
+                }
+            }
         }
 
         let downloaders = self.downloaders.list();

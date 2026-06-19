@@ -10,6 +10,7 @@ use pbh_rules::{
     AntiVampire, ClientNameBlacklist, IdleConnectionDosProtection, MultiDialingBlocker,
     PeerIdBlacklist, ProtectMode, RuleFeatureModule, RuleSet,
 };
+use pbh_storage::Db;
 
 use crate::{AutoRangeBan, BanList, PcbConfig, ProgressCheatBlocker, PtrBlacklist};
 
@@ -46,6 +47,7 @@ pub fn build_modules(
     profile: &ProfileConfig,
     global_dur: i64,
     ban_list: &Arc<BanList>,
+    db: &Db,
 ) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();
 
@@ -150,8 +152,14 @@ pub fn build_modules(
                 "fast-pcb-test-block-duration",
                 15_000,
             ),
+            enable_persist: field_bool(profile, m, "enable-persist", true),
+            persist_duration: field_i64(profile, m, "persist-duration", 1_209_600_000),
         };
-        out.push(Arc::new(ProgressCheatBlocker::new(pcfg)));
+        if pcfg.enable_persist {
+            out.push(ProgressCheatBlocker::with_persistence(pcfg, db.clone()));
+        } else {
+            out.push(Arc::new(ProgressCheatBlocker::new(pcfg)));
+        }
     }
 
     // ptr-blacklist（默认关闭，需联网 DNS）
