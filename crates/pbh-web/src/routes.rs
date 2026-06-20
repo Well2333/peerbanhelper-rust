@@ -36,6 +36,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/sub/logs", get(sub_rule_logs))
         .route("/api/logs", get(get_logs))
         .route("/api/geoip/update", post(geoip_update))
+        .route("/api/update/check", get(update_check))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
     Router::new()
@@ -653,10 +654,65 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
     ApiResp::ok(json!({ "changed": changed, "loaded": st.geoip.is_loaded() })).into_response()
 }
 
+/// latest 是否比 current 新(语义化:major.minor.patch,容忍前导 v 与多余段)。
+fn version_newer(current: &str, latest: &str) -> bool {
+    fn parse(s: &str) -> Vec<u64> {
+        s.trim()
+            .trim_start_matches('v')
+            .split('.')
+            .map(|p| p.chars().take_while(|c| c.is_ascii_digit()).collect::<String>())
+            .map(|d| d.parse::<u64>().unwrap_or(0))
+            .collect()
+    }
+    let (a, b) = (parse(current), parse(latest));
+    for i in 0..a.len().max(b.len()) {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        if y != x {
+            return y > x;
+        }
+    }
+    false
+}
+
+async fn update_check(State(st): State<WebState>) -> Response {
+    let current = env!("CARGO_PKG_VERSION");
+    let app = st.config.current().app.clone();
+    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(15));
+    let url = "https://api.github.com/repos/Well2333/peerbanhelper-rust/releases/latest";
+    let resp = client.get(url).header("User-Agent", "peerbanhelper-rust").send().await;
+    match resp {
+        Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>().await {
+            Ok(j) => {
+                let latest = j.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let html_url = j.get("html_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let newer = !latest.is_empty() && version_newer(current, &latest);
+                ApiResp::ok(json!({ "current": current, "latest": latest, "newer": newer, "html_url": html_url })).into_response()
+            }
+            Err(e) => bad_request(format!("解析失败: {e}")),
+        },
+        Ok(r) => bad_request(format!("GitHub 返回 {}", r.status())),
+        Err(e) => bad_request(format!("请求失败: {e}")),
+    }
+}
+
 fn gen_id() -> String {
     let t = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("d{t:x}")
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::version_newer;
+    #[test]
+    fn semver_compare() {
+        assert!(version_newer("0.1.0", "0.2.0"));
+        assert!(version_newer("0.1.0", "1.0.0"));
+        assert!(!version_newer("0.2.0", "0.1.0"));
+        assert!(!version_newer("0.1.0", "0.1.0"));
+        assert!(version_newer("v0.1.0", "v0.2.0")); // 容忍 v 前缀
+    }
 }
