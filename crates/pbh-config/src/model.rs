@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub persist: PersistConfig,
     pub btn: BtnConfig,
     pub ip_database: IpDatabaseConfig,
+    pub network: NetworkConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +94,13 @@ impl Default for IpDatabaseConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct NetworkConfig {
+    /// 出站代理 URL(http/https/socks5);空字符串表示直连。
+    pub proxy: String,
+}
+
 // ---------------- profile.yml ----------------
 
 /// 封禁行为配置（`profile.yml`）。
@@ -165,5 +173,17 @@ mod tests {
         let sec = p.module_section("progress-cheat-blocker").unwrap();
         assert_eq!(sec.get("enabled").unwrap().as_bool(), Some(true));
         assert!(p.module_section("nonexistent").is_none());
+    }
+
+    #[test]
+    fn network_proxy_roundtrips() {
+        let mut a = AppConfig::default();
+        assert_eq!(a.network.proxy, "");
+        a.network.proxy = "http://127.0.0.1:7890".into();
+        let y = serde_yaml::to_string(&a).unwrap();
+        assert!(y.contains("network:"));
+        assert!(y.contains("proxy: http://127.0.0.1:7890"));
+        let back: AppConfig = serde_yaml::from_str(&y).unwrap();
+        assert_eq!(back.network.proxy, "http://127.0.0.1:7890");
     }
 }
