@@ -151,7 +151,8 @@
     <p class="pdesc">运行概览、统计与下载器状态。每 3 秒自动刷新。</p>
     <div class="stats" id="statCards"></div>
     <div class="card">
-      <h3>📥 下载器状态</h3>
+      <div class="row" style="margin-bottom:10px"><h3 style="margin:0">📥 下载器状态</h3><span class="sp"></span>
+        <button class="sm" onclick="openDlModal()">+ 添加下载器</button></div>
       <div class="dlgrid" id="dlCards"></div>
     </div>
   </section>
@@ -187,38 +188,6 @@
         <tbody id="hisBody"></tbody>
       </table>
       <div class="pager" id="hisPager"></div>
-    </div>
-  </section>
-
-  <!-- 下载器 -->
-  <section class="page" id="page-downloaders">
-    <h1 class="ptitle">下载器管理</h1>
-    <p class="pdesc">添加 / 编辑 / 删除 qBittorrent(含 EE)。保存后即纳入下一轮自动封禁。</p>
-    <div class="card" style="margin-bottom:16px">
-      <h3>已配置</h3>
-      <table><thead><tr><th>名称</th><th>类型</th><th>端点</th><th>状态</th><th></th></tr></thead><tbody id="dlBody"></tbody></table>
-    </div>
-    <div class="card">
-      <h3 id="dlFormTitle">➕ 添加下载器</h3>
-      <div class="grid">
-        <input id="d_name" placeholder="名称">
-        <select id="d_type"><option value="qbittorrent">qBittorrent</option><option value="qbittorrentee">qBittorrentEE</option></select>
-        <input id="d_endpoint" placeholder="http://127.0.0.1:8080">
-        <input id="d_user" placeholder="用户名" autocomplete="off">
-        <input id="d_pass" type="password" placeholder="密码" autocomplete="new-password">
-        <input id="d_id" placeholder="id(留空=新增,自动生成)">
-      </div>
-      <div class="row" style="margin-top:11px">
-        <label class="row" style="gap:5px"><input type="checkbox" id="d_inc"> 增量封禁</label>
-        <label class="row" style="gap:5px"><input type="checkbox" id="d_shadow"> EE 影子封禁</label>
-        <label class="row" style="gap:5px"><input type="checkbox" id="d_verify" checked> 校验 TLS</label>
-        <label class="row" style="gap:5px"><input type="checkbox" id="d_ignpriv"> 排除私有种子</label>
-        <span class="sp"></span>
-        <button class="ghost" onclick="resetDlForm()">清空</button>
-        <button class="ghost" onclick="testDl()">测试连接</button>
-        <button onclick="saveDl()">保存</button>
-      </div>
-      <div id="dlMsg" class="mut" style="margin-top:9px"></div>
     </div>
   </section>
 
@@ -305,6 +274,29 @@
   </section>
 
 </main>
+
+<div id="dlModal" class="hidden" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+  <div class="card" style="width:min(560px,92vw);max-height:90vh;overflow:auto">
+    <div class="row" style="margin-bottom:10px"><h3 id="dlModalTitle" style="margin:0">➕ 添加下载器</h3><span class="sp"></span><button class="ghost sm" onclick="closeDlModal()">✕</button></div>
+    <div class="grid">
+      <input id="d_name" placeholder="名称">
+      <select id="d_type"><option value="qbittorrent">qBittorrent</option><option value="qbittorrentee">qBittorrentEE</option></select>
+      <input id="d_endpoint" placeholder="http://127.0.0.1:8080">
+      <input id="d_user" placeholder="用户名" autocomplete="off">
+      <input id="d_pass" type="password" placeholder="密码" autocomplete="new-password">
+      <input id="d_id" placeholder="id(留空=自动生成)">
+    </div>
+    <div class="row" style="margin-top:11px">
+      <label class="row" style="gap:5px"><input type="checkbox" id="d_inc"> 增量封禁</label>
+      <label class="row" style="gap:5px"><input type="checkbox" id="d_shadow"> EE 影子封禁</label>
+      <label class="row" style="gap:5px"><input type="checkbox" id="d_verify" checked> 校验 TLS</label>
+      <label class="row" style="gap:5px"><input type="checkbox" id="d_ignpriv"> 排除私有种子</label>
+    </div>
+    <div class="row" style="margin-top:12px"><span id="dlMsg" class="mut"></span><span class="sp"></span>
+      <button class="ghost" onclick="testDl()">测试连接</button>
+      <button onclick="saveDl()">保存</button></div>
+  </div>
+</div>
 
 <!-- 登录 -->
 <main id="login" class="hidden">
@@ -430,6 +422,7 @@ async function refreshDashboard(){
   el('statCards').innerHTML = cards.map(c=>`<div class="stat"><div class="k">${c[1]} ${c[0]}</div><div class="v">${c[2]}</div><div class="s">${c[3]}</div></div>`).join('');
   // 下载器卡片
   const list=d.downloader_list||[];
+  dlConfigs=list;
   el('dlCards').innerHTML = list.length ? list.map(c=>{
     const st = c.online===true?['up','在线']:c.online===false?['down','离线']:['unk','未知'];
     return `<div class="dlcard">
@@ -437,10 +430,10 @@ async function refreshDashboard(){
         <span class="sp"></span><span class="pill gray">${esc(c.type)}</span></div>
       <div class="ep">${esc(c.endpoint)}</div>
       <div class="row"><span class="mut">${st[1]}</span>${c.paused?'<span class="pill red">已暂停</span>':''}</div>
-      <div class="acts"><button class="ghost sm" onclick="gotoEdit('${c.id}')">编辑</button>
+      <div class="acts"><button class="ghost sm" onclick="editDl('${c.id}')">编辑</button>
         <button class="danger sm" onclick="delDl('${c.id}')">删除</button></div>
     </div>`;
-  }).join('') : '<div class="empty">还没有下载器。去「下载器」页添加一个 qBittorrent 即可开始自动封禁。</div>';
+  }).join('') : '<div class="empty">还没有下载器。点击「+ 添加下载器」添加一个 qBittorrent 即可开始自动封禁。</div>';
 }
 
 async function checkUpdate(){
@@ -451,31 +444,17 @@ async function checkUpdate(){
 
 /* ---- 下载器 ---- */
 let dlConfigs=[];
-async function loadDownloaders(){
-  const j=await api('/api/downloaders'); dlConfigs=j.data||[];
-  const tb=el('dlBody'); tb.innerHTML='';
-  if(!dlConfigs.length){ tb.innerHTML='<tr><td colspan="5" class="mut" style="text-align:center;padding:20px">暂无下载器</td></tr>'; return; }
-  dlConfigs.forEach(c=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td><b>${esc(c.name||c.id)}</b></td><td><span class="pill gray">${esc(c.type)}</span></td>
-      <td class="mut">${esc(c.endpoint)}</td><td>${c.paused?'<span class="pill red">暂停</span>':'<span class="pill green">启用</span>'}</td>
-      <td class="row"><button class="ghost sm" onclick="editDl('${c.id}')">编辑</button>
-      <button class="danger sm" onclick="delDl('${c.id}')">删除</button></td>`;
-    tb.appendChild(tr);
-  });
-}
-function gotoEdit(id){ location.hash='#downloaders'; setTimeout(()=>editDl(id),60); }
+function openDlModal(){ resetDlForm(); el('dlModalTitle').textContent='➕ 添加下载器'; el('dlModal').classList.remove('hidden'); }
+function closeDlModal(){ el('dlModal').classList.add('hidden'); }
 function editDl(id){
   const c=dlConfigs.find(x=>x.id===id); if(!c) return;
   el('d_id').value=c.id; el('d_name').value=c.name||''; el('d_type').value=c.type; el('d_endpoint').value=c.endpoint||'';
   el('d_user').value=c.username||''; el('d_pass').value=c.password||''; el('d_inc').checked=!!c['increment-ban'];
   el('d_shadow').checked=!!c['use-shadow-ban']; el('d_verify').checked=c['verify-ssl']!==false; el('d_ignpriv').checked=!!c['ignore-private'];
-  el('dlFormTitle').textContent='✏️ 编辑下载器 — '+(c.name||c.id);
-  el('d_name').scrollIntoView({behavior:'smooth',block:'center'});
+  el('dlModalTitle').textContent='✏️ 编辑 — '+(c.name||c.id); el('dlModal').classList.remove('hidden');
 }
 function resetDlForm(){ ['d_id','d_name','d_endpoint','d_user','d_pass'].forEach(i=>el(i).value=''); el('d_type').value='qbittorrent';
-  el('d_inc').checked=false; el('d_shadow').checked=false; el('d_verify').checked=true; el('d_ignpriv').checked=false;
-  el('dlFormTitle').textContent='➕ 添加下载器'; el('dlMsg').textContent=''; }
+  el('d_inc').checked=false; el('d_shadow').checked=false; el('d_verify').checked=true; el('d_ignpriv').checked=false; el('dlMsg').textContent=''; }
 function dlForm(){ return { id:el('d_id').value.trim(), type:el('d_type').value, name:el('d_name').value.trim(),
   endpoint:el('d_endpoint').value.trim(), username:el('d_user').value, password:el('d_pass').value,
   'increment-ban':el('d_inc').checked, 'use-shadow-ban':el('d_shadow').checked,
@@ -483,14 +462,12 @@ function dlForm(){ return { id:el('d_id').value.trim(), type:el('d_type').value,
 async function saveDl(){
   const f=dlForm(); if(!f.endpoint){ el('dlMsg').innerHTML='<span class="bad">请填写端点</span>'; return; }
   const j=await api('/api/downloaders',{method:'PUT',body:JSON.stringify(f)});
-  if(j.ok){ toast('已保存下载器'); resetDlForm(); loadDownloaders(); } else el('dlMsg').innerHTML='<span class="bad">错误:'+esc(j.error)+'</span>';
+  if(j.ok){ toast('已保存'); closeDlModal(); refreshDashboard(); } else el('dlMsg').innerHTML='<span class="bad">错误:'+esc(j.error)+'</span>';
 }
-async function delDl(id){ if(!confirm('删除该下载器?'))return; await api('/api/downloaders/'+id,{method:'DELETE'}); toast('已删除'); loadDownloaders(); refreshDashboard(); }
-async function testDl(){
-  el('dlMsg').textContent='测试中…';
+async function delDl(id){ if(!confirm('删除该下载器?'))return; await api('/api/downloaders/'+id,{method:'DELETE'}); toast('已删除'); refreshDashboard(); }
+async function testDl(){ el('dlMsg').textContent='测试中…';
   const j=await api('/api/downloaders/test',{method:'POST',body:JSON.stringify(dlForm())});
-  el('dlMsg').innerHTML = j.data&&j.data.success ? '<span class="ok">✓ 连接成功</span>' : '<span class="bad">✗ 失败:'+esc((j.data&&j.data.message)||j.error||'')+'</span>';
-}
+  el('dlMsg').innerHTML = j.data&&j.data.success ? '<span class="ok">✓ 连接成功</span>' : '<span class="bad">✗ '+esc((j.data&&j.data.message)||j.error||'')+'</span>'; }
 
 /* ---- 封禁列表 ---- */
 async function loadBans(){
