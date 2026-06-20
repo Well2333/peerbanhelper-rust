@@ -13,6 +13,7 @@ members = [
     "crates/pbh-btn",
     "crates/pbh-web",
     "crates/pbh-server",
+    "crates/pbh-net",
 ]
 
 [workspace.package]

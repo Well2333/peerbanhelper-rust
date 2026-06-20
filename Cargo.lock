@@ -1543,6 +1543,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbh-net"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "pbh-rules"
 version = "0.1.0"
 dependencies = [
