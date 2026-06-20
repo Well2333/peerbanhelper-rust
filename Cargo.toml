@@ -59,6 +59,8 @@ parking_lot = "0.12"
 ip_network_table = "0.2"
 # GeoIP（M6）
 maxminddb = "0.24"
+# GeoIP provider 热替换句柄（WebUI 重构）
+arc-swap = "1"
 # DNS（M4）
 hickory-resolver = "0.24"
 # 内嵌单页前端（M7）
