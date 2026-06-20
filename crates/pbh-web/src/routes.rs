@@ -532,6 +532,10 @@ async fn get_logs(State(st): State<WebState>, Query(q): Query<LogQuery>) -> Resp
 }
 
 async fn geoip_update(State(st): State<WebState>) -> Response {
+    let _guard = match st.geoip_lock.try_lock() {
+        Ok(g) => g,
+        Err(_) => return ApiResp::ok(json!({ "changed": false, "loaded": st.geoip.is_loaded(), "busy": true })).into_response(),
+    };
     let app = st.config.current().app.clone();
     let dir = st.paths.data_dir().join("geoip");
     let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(60));
@@ -545,6 +549,7 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
     if changed || !st.geoip.is_loaded() {
         if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&dir) {
             st.geoip.install(std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>);
+            tracing::info!("GeoIP 库已手动更新并热加载");
         }
     }
     ApiResp::ok(json!({ "changed": changed, "loaded": st.geoip.is_loaded() })).into_response()

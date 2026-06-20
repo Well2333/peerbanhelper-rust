@@ -72,13 +72,19 @@ pub async fn download_one(
                         if let Some(p) = dest.parent() {
                             let _ = std::fs::create_dir_all(p);
                         }
-                        if std::fs::write(&dest, &bytes).is_ok() {
-                            tracing::info!("GeoIP 已下载 {file}({mirror}, {} bytes)", bytes.len());
-                            return true;
-                        } else {
-                            tracing::warn!("GeoIP {file} 写入磁盘失败({mirror}),跳到下一镜像");
+                        let tmp = dir.join(format!("{file}.tmp"));
+                        if std::fs::write(&tmp, &bytes).is_err() {
+                            tracing::warn!("GeoIP {file} 写临时文件失败({mirror})");
+                            let _ = std::fs::remove_file(&tmp);
                             continue 'mirror;
                         }
+                        if std::fs::rename(&tmp, &dest).is_err() {
+                            tracing::warn!("GeoIP {file} 重命名到目标失败({mirror})");
+                            let _ = std::fs::remove_file(&tmp);
+                            continue 'mirror;
+                        }
+                        tracing::info!("GeoIP 已下载 {file}({mirror}, {} bytes)", bytes.len());
+                        return true;
                     }
                     Err(e) => {
                         tracing::warn!("GeoIP {file} 读取响应失败({mirror}): {e}");

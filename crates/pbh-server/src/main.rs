@@ -192,6 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         logs: ctx.logs.clone(),
         geoip: geoip.clone(),
         btn_state: btn_state.clone(),
+        geoip_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
     };
     let bind = format!("{}:{}", cfg.app.server.address, cfg.app.server.http);
     match bind.parse::<std::net::SocketAddr>() {

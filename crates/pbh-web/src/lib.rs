@@ -30,6 +30,8 @@ pub struct WebState {
     pub geoip: GeoIpHandle,
     /// BTN 共享状态（供 profile 热重载时重建 BtnNetworkOnline）。
     pub btn_state: Option<pbh_btn::SharedBtnState>,
+    /// 防止 GeoIP 更新并发触发(重复下载/写竞争)。
+    pub geoip_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 /// 启动 HTTP 服务（阻塞直到出错/关闭）。
