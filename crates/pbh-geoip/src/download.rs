@@ -46,12 +46,13 @@ pub async fn download_one(
     account_id: &str,
     license_key: &str,
 ) -> bool {
+    const MIN_BYTES: usize = 1024 * 1024; // mmdb 文件均为多 MB,过小视为截断或 CDN 错误页
     let dest: PathBuf = dir.join(file);
-    for mirror in MIRRORS {
+    'mirror: for mirror in MIRRORS {
         let url = url_for(mirror, file);
         for with_auth in [false, true] {
             if with_auth && (account_id.is_empty() || license_key.is_empty()) {
-                break; // 无凭证不必再试 auth
+                break; // 无凭证不必再试 auth,跳到下一镜像
             }
             let mut req = client.get(&url);
             if with_auth {
@@ -60,21 +61,43 @@ pub async fn download_one(
             match req.send().await {
                 Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                     Ok(bytes) => {
+                        // 截断保护:过小的响应体可能是 CDN 错误页
+                        if bytes.len() < MIN_BYTES {
+                            tracing::warn!(
+                                "GeoIP {file} 镜像 {mirror} 响应过小({} bytes),跳过",
+                                bytes.len()
+                            );
+                            continue 'mirror;
+                        }
                         if let Some(p) = dest.parent() {
                             let _ = std::fs::create_dir_all(p);
                         }
                         if std::fs::write(&dest, &bytes).is_ok() {
                             tracing::info!("GeoIP 已下载 {file}({mirror}, {} bytes)", bytes.len());
                             return true;
+                        } else {
+                            tracing::warn!("GeoIP {file} 写入磁盘失败({mirror}),跳到下一镜像");
+                            continue 'mirror;
                         }
                     }
-                    Err(e) => tracing::warn!("GeoIP {file} 读取响应失败({mirror}): {e}"),
+                    Err(e) => {
+                        tracing::warn!("GeoIP {file} 读取响应失败({mirror}): {e}");
+                        continue 'mirror;
+                    }
                 },
-                Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !with_auth => {
-                    continue; // 进入 with_auth 重试
+                Ok(resp)
+                    if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !with_auth =>
+                {
+                    continue; // 进入 with_auth 重试同一镜像
                 }
-                Ok(resp) => tracing::warn!("GeoIP {file} 镜像 {mirror} 返回 {}", resp.status()),
-                Err(e) => tracing::warn!("GeoIP {file} 镜像 {mirror} 失败: {e}"),
+                Ok(resp) => {
+                    tracing::warn!("GeoIP {file} 镜像 {mirror} 返回 {}", resp.status());
+                    continue 'mirror;
+                }
+                Err(e) => {
+                    tracing::warn!("GeoIP {file} 镜像 {mirror} 失败: {e}");
+                    continue 'mirror;
+                }
             }
         }
     }
