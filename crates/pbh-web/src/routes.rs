@@ -30,6 +30,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/bans/:ip", delete(remove_ban))
         .route("/api/bans/history", get(ban_history))
         .route("/api/config/profile", get(get_profile).put(put_profile))
+        .route("/api/config/app", get(get_app_config).put(put_app_config))
         .route("/api/sub/rules", get(list_sub_rules).put(upsert_sub_rule))
         .route("/api/sub/rules/:id", delete(delete_sub_rule))
         .route("/api/sub/logs", get(sub_rule_logs))
@@ -225,6 +226,103 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
         return bad_request(format!("保存失败: {e}"));
     }
     // 重建规则模块（即时生效，无需重启）。
+    let p = st.config.current().profile.clone();
+    let modules = pbh_engine::build_modules(
+        &p,
+        p.ban_duration,
+        st.ban_manager.ban_list(),
+        &st.db,
+        &st.geoip,
+        &st.btn.current_state(),
+    );
+    let n = modules.len();
+    st.ban_manager.rebuild_modules(modules);
+    ApiResp::ok(json!({ "modules": n })).into_response()
+}
+
+// ---------------- 应用配置（config.yml 可编辑子集）----------------
+
+async fn get_app_config(State(st): State<WebState>) -> Response {
+    let a = st.config.current().app.clone();
+    ApiResp::ok(json!({
+        "btn": {
+            "enabled": a.btn.enabled,
+            "config_url": a.btn.config_url,
+            "submit": a.btn.submit,
+            "app_id": a.btn.app_id,
+            "app_secret": a.btn.app_secret,
+        },
+        "ip_database": {
+            "account_id": a.ip_database.account_id,
+            "license_key": a.ip_database.license_key,
+            "auto_update": a.ip_database.auto_update,
+        },
+        "network": { "proxy": a.network.proxy },
+        "persist": { "ban_logs_keep_days": a.persist.ban_logs_keep_days },
+    }))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct AppConfigBody {
+    btn: Option<BtnBody>,
+    ip_database: Option<IpDbBody>,
+    network: Option<NetBody>,
+    persist: Option<PersistBody>,
+}
+
+#[derive(Deserialize)]
+struct BtnBody {
+    enabled: bool,
+    config_url: String,
+    submit: bool,
+    app_id: String,
+    app_secret: String,
+}
+
+#[derive(Deserialize)]
+struct IpDbBody {
+    account_id: String,
+    license_key: String,
+    auto_update: bool,
+}
+
+#[derive(Deserialize)]
+struct NetBody {
+    proxy: String,
+}
+
+#[derive(Deserialize)]
+struct PersistBody {
+    ban_logs_keep_days: i64,
+}
+
+async fn put_app_config(State(st): State<WebState>, Json(b): Json<AppConfigBody>) -> Response {
+    let mut app = st.config.current().app.clone();
+    if let Some(x) = b.btn {
+        app.btn.enabled = x.enabled;
+        app.btn.config_url = x.config_url;
+        app.btn.submit = x.submit;
+        app.btn.app_id = x.app_id;
+        app.btn.app_secret = x.app_secret;
+    }
+    if let Some(x) = b.ip_database {
+        app.ip_database.account_id = x.account_id;
+        app.ip_database.license_key = x.license_key;
+        app.ip_database.auto_update = x.auto_update;
+    }
+    if let Some(x) = b.network {
+        app.network.proxy = x.proxy;
+    }
+    if let Some(x) = b.persist {
+        app.persist.ban_logs_keep_days = x.ban_logs_keep_days;
+    }
+    if let Err(e) = st.config.save_app(&app) {
+        return bad_request(format!("保存失败: {e}"));
+    }
+    // 热加载：重启 BTN（应用新 enabled/凭证/代理），再重建规则模块。
+    let dur = st.config.current().profile.ban_duration;
+    st.btn.apply(&app, dur);
     let p = st.config.current().profile.clone();
     let modules = pbh_engine::build_modules(
         &p,
