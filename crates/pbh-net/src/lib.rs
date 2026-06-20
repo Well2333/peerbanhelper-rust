@@ -32,12 +32,19 @@ pub fn proxy_reachable(proxy: &str) -> bool {
 
 /// 构造 reqwest 客户端。proxy 为空或不可达 → 直连;否则走代理。
 ///
+/// 默认行为:
+/// - 自动解压 gzip 响应(需 reqwest `gzip` feature)。
+/// - 发送默认 `User-Agent: PeerBanHelper-Rust/<version>`;各调用方可在请求级别覆盖。
+///
 /// # 阻塞说明
 ///
 /// 若 proxy 非空,本函数内部会调用 [`proxy_reachable`] 执行阻塞式 DNS + TCP 探测
 /// (超时约 1 秒)。本函数仅供启动或配置变更时调用,请勿在每次请求的热路径中调用。
 pub fn build_client(proxy: &str, timeout: Duration) -> reqwest::Client {
-    let mut b = reqwest::Client::builder().timeout(timeout);
+    let mut b = reqwest::Client::builder()
+        .timeout(timeout)
+        .gzip(true)
+        .user_agent(concat!("PeerBanHelper-Rust/", env!("CARGO_PKG_VERSION")));
     if !proxy.trim().is_empty() {
         if proxy_reachable(proxy) {
             match reqwest::Proxy::all(proxy) {
