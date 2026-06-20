@@ -18,7 +18,7 @@ pub struct IpBlackList {
     asns: HashSet<u32>,
     regions: HashSet<String>,
     cities: Vec<String>,
-    /// 启用的中国网络类型名（需 GeoCN，本环境恒不命中）。
+    /// 启用的中国网络类型名（需 GeoCN 数据库）。
     net_types: HashSet<String>,
     geoip: GeoIpHandle,
 }
