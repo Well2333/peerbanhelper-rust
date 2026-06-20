@@ -680,7 +680,7 @@ async fn update_check(State(st): State<WebState>) -> Response {
     let app = st.config.current().app.clone();
     let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(15));
     let url = "https://api.github.com/repos/Well2333/peerbanhelper-rust/releases/latest";
-    let resp = client.get(url).header("User-Agent", "peerbanhelper-rust").send().await;
+    let resp = client.get(url).send().await;
     match resp {
         Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>().await {
             Ok(j) => {
@@ -714,5 +714,14 @@ mod update_tests {
         assert!(!version_newer("0.2.0", "0.1.0"));
         assert!(!version_newer("0.1.0", "0.1.0"));
         assert!(version_newer("v0.1.0", "v0.2.0")); // 容忍 v 前缀
+        // 非对称 v 前缀(GitHub tag 常带 v,CARGO_PKG_VERSION 不带)
+        assert!(version_newer("0.1.0", "v0.2.0"));
+        assert!(!version_newer("v0.2.0", "0.1.0"));
+        // 预发布后缀(take_while 只取数字)
+        assert!(version_newer("1.0.0", "1.0.1-rc1"));
+        assert!(!version_newer("1.0.0", "1.0.0-rc1"));
+        // 不等长版本段
+        assert!(version_newer("1.0.0", "1.0.0.1"));
+        assert!(!version_newer("1.0", "1.0.0"));
     }
 }
