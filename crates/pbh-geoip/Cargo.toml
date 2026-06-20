@@ -9,6 +9,7 @@ maxminddb = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 arc-swap = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

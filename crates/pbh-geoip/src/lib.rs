@@ -6,6 +6,8 @@
 //! 当前实现标准 MaxMind City + ASN 读取。GeoCN（中国网络类型/行政区划）未移植——
 //! `net_type`/`cn_*` 字段保留但恒为 None（需 GeoCN 数据库,本环境无）。
 
+pub mod download;
+
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -53,8 +55,8 @@ impl MaxmindProvider {
         let find = |names: &[&str]| -> Option<std::path::PathBuf> {
             names.iter().map(|n| dir.join(n)).find(|p| p.exists())
         };
-        let city = find(&["GeoLite2-City.mmdb", "GeoIP2-City.mmdb", "City.mmdb"]);
-        let asn = find(&["GeoLite2-ASN.mmdb", "GeoIP2-ASN.mmdb", "ASN.mmdb"]);
+        let city = find(&["GeoIP-City.mmdb", "GeoLite2-City.mmdb", "GeoIP2-City.mmdb", "City.mmdb"]);
+        let asn = find(&["GeoIP-ASN.mmdb", "GeoLite2-ASN.mmdb", "GeoIP2-ASN.mmdb", "ASN.mmdb"]);
         Self::load(city.as_deref(), asn.as_deref())
     }
 }
