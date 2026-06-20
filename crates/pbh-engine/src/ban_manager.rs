@@ -64,8 +64,8 @@ pub struct BanManager {
     login_status: RwLock<HashMap<String, bool>>,
     /// 是否把当前 swarm 记入 `tracked_swarm`（供 BTN 上行 submit_swarm）。
     track_swarm: bool,
-    /// GeoIP 可选注入（封禁历史回填 peer_geoip）。
-    geoip: Option<Arc<dyn pbh_geoip::GeoIpProvider>>,
+    /// GeoIP 句柄（封禁历史回填 peer_geoip；空时 query 返回 None，优雅降级）。
+    geoip: pbh_geoip::GeoIpHandle,
     /// 上次 banlist 快照落库时刻（epoch ms）。
     last_snapshot_at: AtomicU64,
 }
@@ -88,7 +88,7 @@ impl BanManager {
         global_ban_duration: i64,
         ignore_addresses: &[String],
         track_swarm: bool,
-        geoip: Option<Arc<dyn pbh_geoip::GeoIpProvider>>,
+        geoip: pbh_geoip::GeoIpHandle,
     ) -> Arc<Self> {
         let mut ignore = IpMatcher::new();
         for a in ignore_addresses {
@@ -420,8 +420,7 @@ impl BanManager {
             downloader: downloader_id.to_string(),
             peer_geoip: self
                 .geoip
-                .as_ref()
-                .and_then(|g| g.query(p.address.ip))
+                .query(p.address.ip)
                 .and_then(|geo| serde_json::to_string(&geo).ok()),
         };
         if let Err(e) = self.db.insert_ban_history(&row).await {

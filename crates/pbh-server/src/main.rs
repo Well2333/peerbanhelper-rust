@@ -15,7 +15,7 @@ use pbh_config::{ConfigHandle, Paths};
 use pbh_domain::LogBuffer;
 use pbh_downloader::DownloaderManager;
 use pbh_engine::{build_modules, BanList, BanManager};
-use pbh_geoip::{GeoIpProvider, MaxmindProvider};
+use pbh_geoip::{GeoIpHandle, GeoIpProvider, MaxmindProvider};
 use pbh_storage::Db;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -74,10 +74,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if restored > 0 {
         tracing::info!("恢复 {restored} 条封禁快照");
     }
-    // GeoIP 可选注入：从 <data>/geoip/ 加载 MaxMind mmdb；缺失则降级（ASN/地区检查跳过）。
-    let geoip: Option<Arc<dyn GeoIpProvider>> =
+    // GeoIP 可选注入：从 <data>/geoip/ 加载 MaxMind mmdb；缺失则空句柄降级（ASN/地区检查跳过）。
+    let geoip: GeoIpHandle =
         MaxmindProvider::load_from_dir(&paths.data_dir().join("geoip"))
-            .map(|p| Arc::new(p) as Arc<dyn GeoIpProvider>);
+            .map(|p| GeoIpHandle::from_provider(Arc::new(p) as Arc<dyn GeoIpProvider>))
+            .unwrap_or_else(GeoIpHandle::new_empty);
     // BTN 云端威胁情报（仅当 config.yml 启用 + 有凭证）：后台拉取规则/名单更新共享状态。
     let app_cfg = config.current().app.clone();
     let btn_state: Option<pbh_btn::SharedBtnState> = if app_cfg.btn.enabled {

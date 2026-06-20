@@ -13,7 +13,7 @@ use pbh_rules::{
 use std::collections::HashSet;
 
 use pbh_btn::{BtnNetworkOnline, SharedBtnState};
-use pbh_geoip::GeoIpProvider;
+use pbh_geoip::GeoIpHandle;
 use pbh_storage::Db;
 
 use crate::{
@@ -56,7 +56,7 @@ pub fn build_modules(
     global_dur: i64,
     ban_list: &Arc<BanList>,
     db: &Db,
-    geoip: &Option<Arc<dyn GeoIpProvider>>,
+    geoip: &GeoIpHandle,
     btn_state: &Option<SharedBtnState>,
 ) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();

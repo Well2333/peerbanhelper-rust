@@ -284,7 +284,7 @@ async fn list_bans(State(st): State<WebState>) -> Response {
         .into_iter()
         .map(|(net, m)| {
             // GeoIP 可用时按需补地理（国家/城市/ASN）。
-            let geo = st.geoip.as_ref().and_then(|g| g.query(m.peer.ip)).map(|d| {
+            let geo = st.geoip.query(m.peer.ip).map(|d| {
                 let parts: Vec<String> = [d.country_iso, d.city_name, d.as_organization]
                     .into_iter()
                     .flatten()

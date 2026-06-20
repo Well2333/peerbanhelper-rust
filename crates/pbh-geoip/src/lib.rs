@@ -105,6 +105,37 @@ impl GeoIpProvider for MaxmindProvider {
     }
 }
 
+use std::sync::Arc;
+
+/// arc-swap 不直接支持 `dyn Trait`（需 Sized），用具体包装类型绕过。
+struct ProviderBox(Arc<dyn GeoIpProvider>);
+
+/// 可热替换的 GeoIP 句柄：后台下载完成后 `install` 新 provider，读取方立即生效。
+#[derive(Clone)]
+pub struct GeoIpHandle {
+    inner: Arc<arc_swap::ArcSwapOption<ProviderBox>>,
+}
+
+impl GeoIpHandle {
+    pub fn new_empty() -> Self {
+        GeoIpHandle { inner: Arc::new(arc_swap::ArcSwapOption::empty()) }
+    }
+    pub fn from_provider(p: Arc<dyn GeoIpProvider>) -> Self {
+        let h = Self::new_empty();
+        h.install(p);
+        h
+    }
+    pub fn install(&self, p: Arc<dyn GeoIpProvider>) {
+        self.inner.store(Some(Arc::new(ProviderBox(p))));
+    }
+    pub fn is_loaded(&self) -> bool {
+        self.inner.load().is_some()
+    }
+    pub fn query(&self, ip: std::net::IpAddr) -> Option<IpGeoData> {
+        self.inner.load_full().and_then(|b| b.0.query(ip))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +152,22 @@ mod tests {
         let dir = std::env::temp_dir().join("pbh-geoip-empty-test");
         let _ = std::fs::create_dir_all(&dir);
         assert!(MaxmindProvider::load_from_dir(&dir).is_none());
+    }
+
+    #[test]
+    fn handle_starts_empty_and_installs() {
+        let h = GeoIpHandle::new_empty();
+        assert!(h.query("1.1.1.1".parse().unwrap()).is_none());
+        assert!(!h.is_loaded());
+        struct Dummy;
+        impl GeoIpProvider for Dummy {
+            fn query(&self, _ip: std::net::IpAddr) -> Option<IpGeoData> {
+                Some(IpGeoData::default())
+            }
+        }
+        h.install(std::sync::Arc::new(Dummy));
+        assert!(h.is_loaded());
+        assert!(h.query("1.1.1.1".parse().unwrap()).is_some());
     }
 
     #[test]

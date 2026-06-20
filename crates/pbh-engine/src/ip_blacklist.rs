@@ -5,10 +5,9 @@
 //! GeoIP 不可用（无 mmdb）时,asn/region/city/net-type 检查全部跳过,仅 ip/port 生效。
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use pbh_domain::{CheckResult, Peer, PeerAction, Torrent};
-use pbh_geoip::GeoIpProvider;
+use pbh_geoip::GeoIpHandle;
 use pbh_rules::{IpMatcher, RuleFeatureModule};
 
 /// IP 黑名单模块配置。
@@ -21,7 +20,7 @@ pub struct IpBlackList {
     cities: Vec<String>,
     /// 启用的中国网络类型名（需 GeoCN，本环境恒不命中）。
     net_types: HashSet<String>,
-    geoip: Option<Arc<dyn GeoIpProvider>>,
+    geoip: GeoIpHandle,
 }
 
 impl IpBlackList {
@@ -34,7 +33,7 @@ impl IpBlackList {
         regions: HashSet<String>,
         cities: Vec<String>,
         net_types: HashSet<String>,
-        geoip: Option<Arc<dyn GeoIpProvider>>,
+        geoip: GeoIpHandle,
     ) -> Self {
         let mut ips = IpMatcher::new();
         for c in ip_list {
@@ -94,10 +93,7 @@ impl RuleFeatureModule for IpBlackList {
         if !self.needs_geoip() {
             return CheckResult::pass(self.name());
         }
-        let Some(provider) = &self.geoip else {
-            return CheckResult::pass(self.name());
-        };
-        let Some(geo) = provider.query(ip) else {
+        let Some(geo) = self.geoip.query(ip) else {
             return CheckResult::pass(self.name());
         };
         if let Some(asn) = geo.asn {
@@ -166,7 +162,7 @@ mod tests {
             HashSet::new(),
             Vec::new(),
             HashSet::new(),
-            None,
+            GeoIpHandle::new_empty(),
         );
         // 端口命中。
         assert_eq!(
@@ -196,7 +192,7 @@ mod tests {
             HashSet::from(["CN".to_string()]),
             Vec::new(),
             HashSet::new(),
-            None,
+            GeoIpHandle::new_empty(),
         );
         assert_eq!(
             m.should_ban(&torrent(), &peer("1.2.3.4", 6881)).action,

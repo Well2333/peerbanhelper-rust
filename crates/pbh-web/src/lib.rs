@@ -12,7 +12,7 @@ use pbh_config::ConfigHandle;
 use pbh_domain::LogBuffer;
 use pbh_downloader::DownloaderManager;
 use pbh_engine::BanManager;
-use pbh_geoip::GeoIpProvider;
+use pbh_geoip::GeoIpHandle;
 use pbh_storage::Db;
 
 pub use envelope::{ApiResp, Page};
@@ -25,8 +25,8 @@ pub struct WebState {
     pub ban_manager: Arc<BanManager>,
     pub db: Db,
     pub logs: Arc<LogBuffer>,
-    /// GeoIP 可选注入（供 profile 热重载时重建 IPBlackList）。
-    pub geoip: Option<Arc<dyn GeoIpProvider>>,
+    /// GeoIP 句柄（供 list_bans + profile 热重载时重建 IPBlackList）。
+    pub geoip: GeoIpHandle,
     /// BTN 共享状态（供 profile 热重载时重建 BtnNetworkOnline）。
     pub btn_state: Option<pbh_btn::SharedBtnState>,
 }
