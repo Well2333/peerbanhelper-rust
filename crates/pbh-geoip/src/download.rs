@@ -8,15 +8,17 @@ use std::path::{Path, PathBuf};
 /// 45 天(上游 updateInterval = 3888000000 ms)。
 pub const UPDATE_INTERVAL_MS: u128 = 3_888_000_000;
 
-/// 三个镜像源(按序回退)。
+/// 三个镜像源(按序回退)。github 与 ghostchu 均提供 GeoLite2-*/GeoCN 直链;
+/// paulzzh 放最后(其当前不提供 GeoLite2-* 命名,会 404 后回退)。
 pub const MIRRORS: &[&str] = &[
     "https://github.com/PBH-BTN/GeoLite.mmdb/releases/latest/download/",
-    "https://pbh-static.paulzzh.com/ipdb/",
     "https://pbh-static.ghostchu.com/ipdb/",
+    "https://pbh-static.paulzzh.com/ipdb/",
 ];
 
-/// 需要的库文件名(对齐上游)。
-pub const FILES: &[&str] = &["GeoIP-City.mmdb", "GeoIP-ASN.mmdb", "GeoCN.mmdb"];
+/// 需要的库文件名(镜像实际资源名:GeoLite2-City/ASN + GeoCN)。
+/// 加载侧 `load_from_dir` 已同时识别 GeoLite2-* 与 GeoIP-* 命名。
+pub const FILES: &[&str] = &["GeoLite2-City.mmdb", "GeoLite2-ASN.mmdb", "GeoCN.mmdb"];
 
 /// 某文件是否需要(重新)下载:不存在 → true;存在且 auto_update 且 mtime 超 45 天 → true。
 pub fn needs_download(path: &Path, auto_update: bool) -> bool {
@@ -138,8 +140,8 @@ mod tests {
     #[test]
     fn url_join() {
         assert_eq!(
-            url_for(MIRRORS[0], "GeoIP-City.mmdb"),
-            "https://github.com/PBH-BTN/GeoLite.mmdb/releases/latest/download/GeoIP-City.mmdb"
+            url_for(MIRRORS[0], "GeoLite2-City.mmdb"),
+            "https://github.com/PBH-BTN/GeoLite.mmdb/releases/latest/download/GeoLite2-City.mmdb"
         );
     }
 
