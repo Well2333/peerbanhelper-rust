@@ -194,17 +194,33 @@
   <!-- 规则配置 -->
   <section class="page" id="page-rules">
     <h1 class="ptitle">规则配置</h1>
-    <p class="pdesc">编辑 <code>profile.yml</code>。保存后<b>规则模块即时生效</b>(无需重启);
-      <span class="mut">check-interval / 全局 ban-duration 的改动需重启进程。</span></p>
+    <p class="pdesc">配置规则模块。保存后<b>规则模块即时生效</b>(无需重启);
+      <span class="mut">check-interval 的改动需重启进程。</span></p>
     <div class="card">
-      <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">📝 profile.yml</h3><span class="sp"></span>
-        <button class="ghost" onclick="loadProfile()">重新载入</button>
-        <button onclick="saveProfile()">保存并生效</button>
+      <h3>🌐 全局设置</h3>
+      <div class="grid">
+        <label>检查间隔(秒)<span class="mut" style="font-size:11px;margin-left:4px">改动需重启</span>
+          <input id="g_interval" type="number" step="0.1" placeholder="5"></label>
+        <label>默认封禁时长(分钟)
+          <input id="g_bandur" type="number" placeholder="20160"></label>
+        <label style="grid-column:1/3">忽略来源地址(每行一个 CIDR)
+          <textarea id="g_ignore" rows="3" placeholder="127.0.0.1/8&#10;::1/128"></textarea></label>
       </div>
-      <textarea id="profileYaml" rows="22" spellcheck="false"></textarea>
-      <div id="ruleMsg" class="mut" style="margin-top:9px"></div>
     </div>
+    <div id="ruleCards"></div>
+    <div class="card">
+      <div class="row">
+        <button class="ghost" onclick="loadProfile()">重新载入</button>
+        <button onclick="saveRules()">保存并生效</button>
+        <span class="sp"></span>
+        <span id="ruleMsg" class="mut"></span>
+      </div>
+    </div>
+    <details class="card" style="margin-top:0">
+      <summary style="cursor:pointer;font-weight:620;padding:2px 0">🔧 高级:直接编辑 YAML</summary>
+      <textarea id="profileYaml" rows="20" spellcheck="false" style="margin-top:10px"></textarea>
+      <div style="margin-top:8px"><button onclick="saveProfileRaw()">保存原始 YAML</button></div>
+    </details>
     <div class="card">
       <h3>🌐 IP 黑名单订阅</h3>
       <table><thead><tr><th>规则ID</th><th>名称</th><th>条数</th><th>最后更新</th><th>状态</th><th></th></tr></thead><tbody id="subBody"></tbody></table>
@@ -524,11 +540,155 @@ async function loadHistory(){
 }
 
 /* ---- 规则配置 ---- */
+const RULE_MODULES = [
+  { key:'peer-id-blacklist', name:'PeerID 黑名单', defOn:true,
+    desc:'按 PeerID 前缀/包含/正则封禁已知吸血客户端(迅雷、IDM 等)。默认内置常见名单，留空则使用内置默认。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {map:'banned-peer-id', t:'lines', label:'PeerID 规则(每行 METHOD:content，如 STARTS_WITH:-XL)'},
+    ]},
+  { key:'client-name-blacklist', name:'客户端名黑名单', defOn:true,
+    desc:'按握手上报的客户端名称封禁。支持 STARTS_WITH / CONTAINS / EQUALS / REGEX。留空则使用内置默认。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {map:'banned-client-name', t:'lines', label:'客户端名规则(每行 METHOD:content，如 CONTAINS:Xunlei)'},
+    ]},
+  { key:'anti-vampire', name:'反吸血(AntiVampire)', defOn:true,
+    desc:'检测下载量严重超出实际上传量的吸血 peer（如迅雷等工具）。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+    ]},
+  { key:'progress-cheat-blocker', name:'进度欺骗拦截(PCB)', defOn:true,
+    desc:'检测虚报下载进度的 peer（吸血核心模块）。若 peer 上报进度与真实上传量偏差过大则封禁。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'minimum-size', t:'num', label:'最小种子体积(字节，默认 50MB)', step:'1'},
+      {k:'maximum-difference', t:'num', label:'最大进度差值(0~1，默认 0.1)', step:'0.001'},
+      {k:'rewind-maximum-difference', t:'num', label:'回退最大差值(0~1，默认 0.07)', step:'0.001'},
+      {k:'block-excessive-clients', t:'toggle', label:'封禁超量下载客户端'},
+      {k:'excessive-threshold', t:'num', label:'超量倍率阈值(默认 1.5)', step:'0.01'},
+      {k:'ipv4-prefix-length', t:'num', label:'IPv4 前缀长度(0-32，默认 32)', step:'1'},
+      {k:'ipv6-prefix-length', t:'num', label:'IPv6 前缀长度(0-128，默认 56)', step:'1'},
+      {k:'max-wait-duration', t:'num', label:'最大等待时长(分钟，默认 0.5)', scale:60000, step:'0.1'},
+      {k:'fast-pcb-test-percentage', t:'num', label:'快速检测进度阈值(0~1，默认 0.1)', step:'0.01'},
+      {k:'fast-pcb-test-block-duration', t:'num', label:'快速检测封禁时长(分钟)', scale:60000, step:'0.1'},
+      {k:'enable-persist', t:'toggle', label:'启用持久化(重启保留封禁)'},
+      {k:'persist-duration', t:'num', label:'持久化有效期(分钟)', scale:60000},
+    ]},
+  { key:'ip-address-blocker', name:'IP 地址黑名单', defOn:false,
+    desc:'按 IP/CIDR 封禁特定地址。ASN/地区/城市/网络类型过滤需在高级 YAML 中配置。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {map:'ips', t:'lines', label:'IP 列表(每行一个 IP 或 CIDR，如 1.2.3.0/24)'},
+    ]},
+  { key:'ip-address-blocker-rules', name:'IP 订阅规则(订阅管理)', defOn:false,
+    desc:'从远程订阅列表自动更新 IP 黑名单。订阅条目请使用下方「IP 黑名单订阅」管理界面添加/删除。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'check-interval', t:'num', label:'订阅刷新间隔(分钟)', scale:60000},
+    ]},
+  { key:'multi-dialing-blocker', name:'多拨封禁', defOn:false,
+    desc:'检测同一子网内多个 IP 同时连接同一种子（多拨/代理池行为）。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'subnet-mask-length', t:'num', label:'IPv4 子网掩码长度(默认 24)', step:'1'},
+      {k:'subnet-mask-v6-length', t:'num', label:'IPv6 子网掩码长度(默认 56)', step:'1'},
+      {k:'tolerate-num-ipv4', t:'num', label:'IPv4 容忍 IP 数(默认 2)', step:'1'},
+      {k:'tolerate-num-ipv6', t:'num', label:'IPv6 容忍 IP 数(默认 5)', step:'1'},
+      {k:'cache-lifespan', t:'num', label:'缓存有效期(秒，默认 86400)', step:'1'},
+      {k:'keep-hunting', t:'toggle', label:'持续追踪(子网一旦封禁持续监控)'},
+      {k:'keep-hunting-time', t:'num', label:'持续追踪时长(秒，默认 2592000)', step:'1'},
+    ]},
+  { key:'idle-connection-dos-protection', name:'空闲连接 DoS 防护', defOn:false,
+    desc:'检测长时间保持连接但下载速度极低的 peer，防止资源耗尽攻击。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'max-allowed-idle-time', t:'num', label:'最大空闲时长(分钟，默认 5)', scale:60000, step:'0.1'},
+      {k:'idle-speed-threshold', t:'num', label:'空闲速度阈值(KB/s，默认 64)', step:'1'},
+      {k:'min-status-change-percentage', t:'num', label:'最小状态变化比例(0~1，默认 0.001)', step:'0.0001'},
+      {k:'reset-on-status-change', t:'toggle', label:'状态变化时重置计时器'},
+      {k:'protect-mode', t:'num', label:'保护模式(0=禁用 1=轻度 2=严格)', step:'1'},
+    ]},
+  { key:'ptr-blacklist', name:'PTR 反查黑名单', defOn:false,
+    desc:'对 peer IP 进行 DNS PTR 反向查询，根据主机名匹配规则封禁（需联网）。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'cache-ttl', t:'num', label:'DNS 缓存 TTL(秒，默认 3600)', step:'1'},
+      {map:'ptr-rules', t:'lines', label:'PTR 规则(每行 METHOD:content，如 CONTAINS:example.com)'},
+    ]},
+  { key:'auto-range-ban', name:'自动段封禁', defOn:false,
+    desc:'当某子网内封禁 IP 数量超阈值时，自动封禁整个 IP 段。',
+    fields:[
+      {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
+      {k:'ipv4', t:'num', label:'IPv4 前缀长度(0-32，默认 30)', step:'1'},
+      {k:'ipv6', t:'num', label:'IPv6 前缀长度(0-128，默认 48)', step:'1'},
+    ]},
+];
+
+let profileObj={};
+function linesFmt(x){ return (x&&typeof x==='object')? ((x.method||'')+':'+(x.content||'')) : String(x); }
+function linesParse(line, isObj){ if(!isObj) return line.trim();
+  const i=line.indexOf(':'); return i<0?{method:'STARTS_WITH',content:line.trim()}:{method:line.slice(0,i).trim(),content:line.slice(i+1).trim()}; }
+function isObjList(map){ return map==='banned-peer-id' || map==='banned-client-name'; }
+
+function renderRuleCards(){
+  const mod = profileObj.module || (profileObj.module={});
+  el('ruleCards').innerHTML = RULE_MODULES.map(m=>{
+    const sec = mod[m.key]||{};
+    const on = sec.enabled!==undefined ? !!sec.enabled : m.defOn;
+    const fields = (m.fields||[]).map(f=>{
+      const id='rf_'+m.key+'_'+(f.k||f.map);
+      if(f.t==='toggle') return `<label class="row" style="gap:5px"><input type="checkbox" id="${id}" ${sec[f.k]?'checked':''}> ${f.label}</label>`;
+      if(f.t==='lines'){ const arr=sec[f.map]||[]; const txt=Array.isArray(arr)?arr.map(linesFmt).join('\n'):''; return `<label style="display:block;grid-column:1/3">${f.label}<textarea id="${id}" rows="4">${esc(txt)}</textarea></label>`; }
+      let v=sec[f.k]; if(v!=null&&f.scale) v=v/f.scale;
+      return `<label>${f.label}<input id="${id}" type="number" ${f.step?('step='+f.step):''} value="${v!=null?v:''}"></label>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:0;border-top:none;border-radius:0">
+      <div class="row"><h3 style="margin:0">${esc(m.name)}</h3><span class="sp"></span>
+        <label class="row" style="gap:6px"><input type="checkbox" id="ren_${m.key}" ${on?'checked':''}> 启用</label></div>
+      <p class="mut" style="margin:6px 0 10px;font-size:12.5px">${esc(m.desc)}</p>
+      <div class="grid">${fields}</div></div>`;
+  }).join('');
+}
+
 async function loadProfile(){
   const j=await api('/api/config/profile');
-  if(j.ok){ el('profileYaml').value=j.data.yaml; el('ruleMsg').textContent=''; }
+  if(j.ok){
+    el('profileYaml').value=j.data.yaml||'';
+    profileObj = j.data.profile || {};
+    if(!profileObj.module) profileObj.module={};
+    el('g_interval').value=(profileObj['check-interval']||5000)/1000;
+    el('g_bandur').value=(profileObj['ban-duration']||1209600000)/60000;
+    el('g_ignore').value=(profileObj['ignore-peers-from-addresses']||[]).join('\n');
+    renderRuleCards(); el('ruleMsg').textContent='';
+  }
   loadSubs();
 }
+function collectRules(){
+  profileObj['check-interval']=Math.round((parseFloat(el('g_interval').value)||5)*1000);
+  profileObj['ban-duration']=Math.round((parseFloat(el('g_bandur').value)||0)*60000)||1209600000;
+  profileObj['ignore-peers-from-addresses']=el('g_ignore').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const mod=profileObj.module||(profileObj.module={});
+  RULE_MODULES.forEach(m=>{
+    const sec=mod[m.key]||(mod[m.key]={});
+    sec.enabled=el('ren_'+m.key).checked;
+    (m.fields||[]).forEach(f=>{
+      const id='rf_'+m.key+'_'+(f.k||f.map); const node=el(id); if(!node) return;
+      if(f.t==='toggle'){ sec[f.k]=node.checked; }
+      else if(f.t==='lines'){ sec[f.map]=node.value.split('\n').map(s=>s.trim()).filter(Boolean).map(l=>linesParse(l,isObjList(f.map))); }
+      else { const v=node.value.trim(); if(v===''){ delete sec[f.k]; } else { let num=parseFloat(v); if(f.scale) num=Math.round(num*f.scale); sec[f.k]=num; } }
+    });
+  });
+}
+async function saveRules(){ collectRules(); await putProfile({ profile: profileObj }); }
+async function saveProfileRaw(){ await putProfile({ yaml: el('profileYaml').value }); }
+async function putProfile(body){
+  el('ruleMsg').textContent='保存中…';
+  const j=await api('/api/config/profile',{method:'PUT',body:JSON.stringify(body)});
+  if(j.ok){ el('ruleMsg').innerHTML='<span class="ok">✓ 已保存，'+j.data.modules+' 个规则模块已生效</span>'; toast('规则已保存生效'); loadProfile(); refreshDashboard(); }
+  else el('ruleMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
+}
+
 let subsCache=[];
 async function loadSubs(){
   try{ const j=await api('/api/sub/rules'); const tb=el('subBody'); subsCache=j.data||[]; tb.innerHTML='';
@@ -555,12 +715,6 @@ async function saveSub(){
   else el('subMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
 }
 async function delSub(id){ if(!confirm('删除订阅 '+id+'?'))return; await api('/api/sub/rules/'+encodeURIComponent(id),{method:'DELETE'}); toast('已删除订阅'); loadSubs(); }
-async function saveProfile(){
-  el('ruleMsg').textContent='保存中…';
-  const j=await api('/api/config/profile',{method:'PUT',body:JSON.stringify({yaml:el('profileYaml').value})});
-  if(j.ok){ el('ruleMsg').innerHTML='<span class="ok">✓ 已保存,'+ (j.data.modules) +' 个规则模块已生效</span>'; toast('规则已保存生效'); refreshDashboard(); }
-  else el('ruleMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
-}
 
 /* ---- 日志（WebSocket 实时流，断线自动重连）---- */
 let logWs=null;
