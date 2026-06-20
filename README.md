@@ -17,17 +17,17 @@
 
 ### 1. 获取程序
 
-- **下载**:从 [Releases](../../releases) 下载对应平台的压缩包(Linux / Windows / macOS),解压得到 `pbh` 可执行文件。
+- **下载**:从 [Releases](../../releases) 下载对应平台的压缩包(Linux / Windows / macOS),解压得到 `pbh-rust` 可执行文件。
 - **或自行构建**:见文末「从源码构建」。
 
 ### 2. 运行
 
 ```bash
 # Linux / macOS
-PBH_DATA_DIR=./data ./pbh
+PBH_DATA_DIR=./data ./pbh-rust
 
 # Windows (PowerShell)
-$env:PBH_DATA_DIR="./data"; ./pbh.exe
+$env:PBH_DATA_DIR="./data"; ./pbh-rust.exe
 ```
 
 首次启动会在 `./data/` 生成配置和数据库,并在**日志里打印一次 API token**(形如 `→ d2dd7431...`),请记下。
@@ -116,7 +116,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --defaul
 ./build.sh            # 发布构建 → target/release/pbh
 ./build.sh run        # 构建并运行(调试版)
 ./build.sh test       # 全部单元测试
-./build.sh package    # 打包 → dist/pbh-<ver>-<os>-<arch>.tar.gz
+./build.sh package    # 打包 → dist/pbh-rust-<ver>-<os>-<arch>.tar.gz
 ```
 
 或手动 `cargo build --release -p pbh-server`。

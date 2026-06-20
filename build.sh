@@ -8,7 +8,7 @@
 #   ./build.sh run        构建并运行 (调试版, 数据目录 ./data)
 #   ./build.sh test       运行全部单元测试
 #   ./build.sh clippy     运行 clippy + fmt 检查
-#   ./build.sh package    构建发布版并打包到 dist/pbh-<ver>-<os>-<arch>.tar.gz
+#   ./build.sh package    构建发布版并打包到 dist/pbh-rust-<ver>-<os>-<arch>.tar.gz
 #   ./build.sh clean      清理 target/ 与 dist/
 #
 # 说明: 现代依赖需 rustc >= 1.85。系统自带的 1.75 不可用;脚本会优先用 rustup 的
@@ -90,10 +90,10 @@ case "$cmd" in
         ver="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
         os="$(uname -s | tr '[:upper:]' '[:lower:]')"
         arch="$(uname -m)"
-        name="pbh-${ver}-${os}-${arch}"
+        name="pbh-rust-${ver}-${os}-${arch}"
         stage="dist/$name"
         rm -rf "$stage"; mkdir -p "$stage"
-        cp "target/release/$BIN" "$stage/"
+        cp "target/release/$BIN" "$stage/pbh-rust"
         cp README.md "$stage/" 2>/dev/null || true
         cat > "$stage/downloaders.yml.example" <<'YAML'
 # 复制为 <数据目录>/config/downloaders.yml 并按需修改
@@ -110,7 +110,7 @@ case "$cmd" in
 YAML
         cat > "$stage/运行说明.txt" <<'TXT'
 PeerBanHelper-Rust 运行说明
-1) 运行:  PBH_DATA_DIR=./data ./pbh
+1) 运行:  PBH_DATA_DIR=./data ./pbh-rust
 2) 首次启动会在 ./data/ 生成配置并在日志打印一次 API token
 3) 浏览器打开 http://127.0.0.1:9898 , 用该 token 登录
 4) 在「下载器」里添加你的 qBittorrent, 即开始每 5 秒一轮自动封禁

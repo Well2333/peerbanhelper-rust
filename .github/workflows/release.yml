@@ -52,9 +52,9 @@ jobs:
         shell: bash
         run: |
           ver="${GITHUB_REF_NAME#v}"
-          name="pbh-${ver}-${{ matrix.target }}"
+          name="pbh-rust-${ver}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/pbh" "dist/$name/"
+          cp "target/${{ matrix.target }}/release/pbh" "dist/$name/pbh-rust"
           cp README.md "dist/$name/" 2>/dev/null || true
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           echo "ASSET=dist/$name.tar.gz" >> "$GITHUB_ENV"
@@ -65,9 +65,9 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
-          $name = "pbh-$ver-${{ matrix.target }}"
+          $name = "pbh-rust-$ver-${{ matrix.target }}"
           New-Item -ItemType Directory -Force "dist/$name" | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/pbh.exe" "dist/$name/"
+          Copy-Item "target/${{ matrix.target }}/release/pbh.exe" "dist/$name/pbh-rust.exe"
           Copy-Item README.md "dist/$name/" -ErrorAction SilentlyContinue
           Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
           "ASSET=dist/$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
