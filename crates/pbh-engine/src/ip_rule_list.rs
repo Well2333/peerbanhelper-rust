@@ -54,12 +54,7 @@ impl IpBlackRuleList {
             matchers: matchers.clone(),
             shutdown: shutdown.clone(),
         });
-        let http = reqwest::Client::builder()
-            .gzip(true)
-            .timeout(Duration::from_secs(45))
-            .user_agent(concat!("PeerBanHelper-Rust/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .unwrap_or_default();
+        let http = pbh_net::build_client("", Duration::from_secs(45));
         let interval_secs = (check_interval_ms / 1000).clamp(60, 86_400) as u64;
         tokio::spawn(async move {
             loop {

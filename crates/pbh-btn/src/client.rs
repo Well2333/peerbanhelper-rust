@@ -21,12 +21,9 @@ pub struct BtnClient {
 }
 
 impl BtnClient {
-    pub fn new(app_id: String, app_secret: String, installation_id: String) -> Self {
-        let http = reqwest::Client::builder()
-            .gzip(true)
-            .timeout(std::time::Duration::from_secs(45))
-            .build()
-            .unwrap_or_default();
+    /// `proxy` 为空字符串时直连（当前所有调用均传 `""`，代理接通在后续任务中完成）。
+    pub fn new(app_id: String, app_secret: String, installation_id: String, proxy: &str) -> Self {
+        let http = pbh_net::build_client(proxy, std::time::Duration::from_secs(45));
         BtnClient {
             http,
             app_id,
@@ -179,7 +176,7 @@ mod tests {
 
     #[test]
     fn anonymous_uses_installation_id() {
-        let c = BtnClient::new(String::new(), String::new(), "install-123".into());
+        let c = BtnClient::new(String::new(), String::new(), "install-123".into(), "");
         assert!(c.is_anonymous());
         let h = c.base_headers();
         assert!(h.contains_key("X-BTN-InstallationID"));
@@ -188,7 +185,7 @@ mod tests {
 
     #[test]
     fn authed_sets_app_headers() {
-        let c = BtnClient::new("appid".into(), "secret".into(), "i".into());
+        let c = BtnClient::new("appid".into(), "secret".into(), "i".into(), "");
         assert!(!c.is_anonymous());
         let h = c.base_headers();
         assert_eq!(h.get("X-BTN-AppID").unwrap(), "appid");

@@ -63,6 +63,7 @@ pub fn spawn(cfg: BtnRuntimeConfig, db: Db, state: Arc<RwLock<BtnState>>) -> Arc
             cfg.app_id.clone(),
             cfg.app_secret.clone(),
             cfg.installation_id.clone(),
+            "",
         );
         loop {
             if sd.load(Ordering::Relaxed) {

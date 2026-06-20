@@ -8,6 +8,7 @@ license.workspace = true
 pbh-domain = { path = "../pbh-domain" }
 pbh-rules = { path = "../pbh-rules" }
 pbh-storage = { path = "../pbh-storage" }
+pbh-net = { path = "../pbh-net" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
