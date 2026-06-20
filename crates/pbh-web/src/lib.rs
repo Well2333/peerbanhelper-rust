@@ -8,7 +8,7 @@ mod routes;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use pbh_config::ConfigHandle;
+use pbh_config::{ConfigHandle, Paths};
 use pbh_domain::LogBuffer;
 use pbh_downloader::DownloaderManager;
 use pbh_engine::BanManager;
@@ -21,6 +21,7 @@ pub use envelope::{ApiResp, Page};
 #[derive(Clone)]
 pub struct WebState {
     pub config: ConfigHandle,
+    pub paths: Paths,
     pub downloaders: Arc<DownloaderManager>,
     pub ban_manager: Arc<BanManager>,
     pub db: Db,

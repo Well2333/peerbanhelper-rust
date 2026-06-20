@@ -34,6 +34,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/sub/rules/:id", delete(delete_sub_rule))
         .route("/api/sub/logs", get(sub_rule_logs))
         .route("/api/logs", get(get_logs))
+        .route("/api/geoip/update", post(geoip_update))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
     Router::new()
@@ -528,6 +529,25 @@ async fn get_logs(State(st): State<WebState>, Query(q): Query<LogQuery>) -> Resp
         )
         .collect();
     ApiResp::ok(json!({ "items": items })).into_response()
+}
+
+async fn geoip_update(State(st): State<WebState>) -> Response {
+    let app = st.config.current().app.clone();
+    let dir = st.paths.data_dir().join("geoip");
+    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(60));
+    let changed = pbh_geoip::download::ensure_databases(
+        &client,
+        &dir,
+        true,
+        &app.ip_database.account_id,
+        &app.ip_database.license_key,
+    ).await;
+    if changed {
+        if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&dir) {
+            st.geoip.install(std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>);
+        }
+    }
+    ApiResp::ok(json!({ "changed": changed, "loaded": st.geoip.is_loaded() })).into_response()
 }
 
 fn gen_id() -> String {

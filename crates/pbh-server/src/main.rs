@@ -159,9 +159,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .spawn_loop(cfg.profile.check_interval as u64);
 
+    // GeoIP 自动下载(缺文件或过期);完成后热替换 provider。
+    {
+        let geoip = geoip.clone();
+        let geoip_dir = ctx.paths.data_dir().join("geoip");
+        let app_cfg = ctx.config.current().app.clone();
+        tokio::spawn(async move {
+            let client = pbh_net::build_client(&app_cfg.network.proxy, std::time::Duration::from_secs(60));
+            let changed = pbh_geoip::download::ensure_databases(
+                &client,
+                &geoip_dir,
+                app_cfg.ip_database.auto_update,
+                &app_cfg.ip_database.account_id,
+                &app_cfg.ip_database.license_key,
+            ).await;
+            if changed || !geoip.is_loaded() {
+                if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&geoip_dir) {
+                    geoip.install(std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>);
+                    tracing::info!("GeoIP 库已就绪并热加载");
+                }
+            }
+        });
+    }
+
     // 9. 启动 Web 服务
     let web_state = pbh_web::WebState {
         config: ctx.config.clone(),
+        paths: ctx.paths.clone(),
         downloaders: ctx.downloaders.clone(),
         ban_manager: ctx.ban_manager.clone(),
         db: ctx.db.clone(),

@@ -17,6 +17,7 @@ pbh-storage = { path = "../pbh-storage" }
 pbh-downloader = { path = "../pbh-downloader" }
 pbh-engine = { path = "../pbh-engine" }
 pbh-geoip = { path = "../pbh-geoip" }
+pbh-net = { path = "../pbh-net" }
 pbh-btn = { path = "../pbh-btn" }
 pbh-web = { path = "../pbh-web" }
 tokio = { workspace = true }

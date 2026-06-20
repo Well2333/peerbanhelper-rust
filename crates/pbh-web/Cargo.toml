@@ -10,6 +10,7 @@ pbh-config = { path = "../pbh-config" }
 pbh-downloader = { path = "../pbh-downloader" }
 pbh-engine = { path = "../pbh-engine" }
 pbh-geoip = { path = "../pbh-geoip" }
+pbh-net = { path = "../pbh-net" }
 pbh-btn = { path = "../pbh-btn" }
 pbh-storage = { path = "../pbh-storage" }
 axum = { workspace = true }
