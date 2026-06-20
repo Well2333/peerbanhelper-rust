@@ -7,4 +7,3 @@ license.workspace = true
 [dependencies]
 reqwest = { workspace = true }
 tracing = { workspace = true }
-url = "2"

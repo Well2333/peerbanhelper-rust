@@ -6,11 +6,16 @@
 use std::time::Duration;
 
 /// 探测代理 host:port 是否可 TCP 连接(~1s 超时)。proxy 为空返回 false。
+///
+/// # 阻塞说明
+///
+/// 当传入非空代理字符串时,本函数会执行阻塞式 DNS 解析 + TCP 连接探测(超时约 1 秒)。
+/// 设计上仅供客户端构造(启动/配置变更)时调用,请勿在每次请求的热路径中调用。
 pub fn proxy_reachable(proxy: &str) -> bool {
     if proxy.trim().is_empty() {
         return false;
     }
-    let Ok(u) = url::Url::parse(proxy) else {
+    let Ok(u) = reqwest::Url::parse(proxy) else {
         return false;
     };
     let Some(host) = u.host_str() else {
@@ -21,10 +26,16 @@ pub fn proxy_reachable(proxy: &str) -> bool {
     let Ok(mut addrs) = (host, port).to_socket_addrs() else {
         return false;
     };
+    // TOCTOU:探测时可达、构造后不可达(或反之)均属正常,因客户端构造频率极低,此权衡可接受。
     addrs.any(|addr| std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(1000)).is_ok())
 }
 
 /// 构造 reqwest 客户端。proxy 为空或不可达 → 直连;否则走代理。
+///
+/// # 阻塞说明
+///
+/// 若 proxy 非空,本函数内部会调用 [`proxy_reachable`] 执行阻塞式 DNS + TCP 探测
+/// (超时约 1 秒)。本函数仅供启动或配置变更时调用,请勿在每次请求的热路径中调用。
 pub fn build_client(proxy: &str, timeout: Duration) -> reqwest::Client {
     let mut b = reqwest::Client::builder().timeout(timeout);
     if !proxy.trim().is_empty() {
@@ -40,7 +51,10 @@ pub fn build_client(proxy: &str, timeout: Duration) -> reqwest::Client {
             tracing::warn!("代理不可达({proxy}),本次改直连");
         }
     }
-    b.build().unwrap_or_else(|_| reqwest::Client::new())
+    b.build().unwrap_or_else(|e| {
+        tracing::error!("构造 reqwest 客户端失败,回退默认客户端: {e}");
+        reqwest::Client::new()
+    })
 }
 
 #[cfg(test)]
@@ -65,6 +79,7 @@ mod tests {
 
     #[test]
     fn build_client_unreachable_falls_back() {
+        // 无恐慌冒烟测试:reqwest 未公开 API 来内省代理配置,仅验证函数不崩溃。
         let _c = build_client("http://127.0.0.1:1", Duration::from_secs(5));
     }
 }
