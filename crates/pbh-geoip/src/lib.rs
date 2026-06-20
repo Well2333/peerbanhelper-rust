@@ -8,6 +8,7 @@
 
 use std::net::IpAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -105,8 +106,6 @@ impl GeoIpProvider for MaxmindProvider {
     }
 }
 
-use std::sync::Arc;
-
 /// arc-swap 不直接支持 `dyn Trait`（需 Sized），用具体包装类型绕过。
 struct ProviderBox(Arc<dyn GeoIpProvider>);
 
@@ -168,6 +167,18 @@ mod tests {
         h.install(std::sync::Arc::new(Dummy));
         assert!(h.is_loaded());
         assert!(h.query("1.1.1.1".parse().unwrap()).is_some());
+    }
+
+    #[test]
+    fn handle_clone_shares_state() {
+        let h = GeoIpHandle::new_empty();
+        let h2 = h.clone();
+        struct Dummy;
+        impl GeoIpProvider for Dummy {
+            fn query(&self, _ip: std::net::IpAddr) -> Option<IpGeoData> { Some(IpGeoData::default()) }
+        }
+        h.install(std::sync::Arc::new(Dummy));
+        assert!(h2.is_loaded()); // install on one clone visible on the other
     }
 
     #[test]
