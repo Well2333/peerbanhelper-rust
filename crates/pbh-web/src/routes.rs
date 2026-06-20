@@ -542,7 +542,7 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
         &app.ip_database.account_id,
         &app.ip_database.license_key,
     ).await;
-    if changed {
+    if changed || !st.geoip.is_loaded() {
         if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&dir) {
             st.geoip.install(std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>);
         }
