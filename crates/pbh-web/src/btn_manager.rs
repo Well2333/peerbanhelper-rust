@@ -30,7 +30,7 @@ impl BtnManager {
     }
 
     /// 按新配置应用:enabled=false → 停;否则停旧再以新 proxy/凭证起新。
-    pub fn apply(&self, app: &pbh_config::AppConfig, proxy: &str, ban_duration: i64) {
+    pub fn apply(&self, app: &pbh_config::AppConfig, ban_duration: i64) {
         self.stop();
         if !app.btn.enabled {
             return;
@@ -44,12 +44,18 @@ impl BtnManager {
                 installation_id: self.installation_id.clone(),
                 submit: app.btn.submit,
                 ban_duration,
-                proxy: proxy.to_string(),
+                proxy: app.network.proxy.clone(),
             },
             self.db.clone(),
             state.clone(),
         );
         *self.inner.lock().unwrap() = Some((handle, state));
         tracing::info!("BTN 调度已启动");
+    }
+}
+
+impl Drop for BtnManager {
+    fn drop(&mut self) {
+        self.stop();
     }
 }

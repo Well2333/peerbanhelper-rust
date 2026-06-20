@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // BTN 云端威胁情报（仅当 config.yml 启用 + 有凭证）：后台拉取规则/名单更新共享状态。
     let app_cfg = config.current().app.clone();
     let btn_mgr = std::sync::Arc::new(pbh_web::BtnManager::new(db.clone(), installation_id.clone()));
-    btn_mgr.apply(&app_cfg, &app_cfg.network.proxy, profile.ban_duration);
+    btn_mgr.apply(&app_cfg, profile.ban_duration);
     let btn_state = btn_mgr.current_state(); // 供首次 build_modules
     let modules = build_modules(
         &profile,
