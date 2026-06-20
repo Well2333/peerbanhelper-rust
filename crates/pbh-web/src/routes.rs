@@ -232,7 +232,7 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
         st.ban_manager.ban_list(),
         &st.db,
         &st.geoip,
-        &st.btn_state,
+        &st.btn.current_state(),
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -495,7 +495,7 @@ async fn save_and_rebuild(
         st.ban_manager.ban_list(),
         &st.db,
         &st.geoip,
-        &st.btn_state,
+        &st.btn.current_state(),
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);

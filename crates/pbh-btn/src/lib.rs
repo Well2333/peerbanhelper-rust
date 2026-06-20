@@ -16,12 +16,12 @@ pub mod online;
 pub mod pow;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::RwLock;
 use pbh_storage::Db;
+use tokio::task::AbortHandle;
 
 pub use client::{gzip, BtnClient};
 pub use hash::hashed_identifier;
@@ -52,23 +52,20 @@ pub struct BtnRuntimeConfig {
     pub submit: bool,
     /// BTN 封禁时长。
     pub ban_duration: i64,
+    /// HTTP 代理（空字符串表示不使用）。
+    pub proxy: String,
 }
 
-/// 启动 BTN 后台调度（拉 config → 下行更新状态 + 上行提交）。返回停止标志。
-pub fn spawn(cfg: BtnRuntimeConfig, db: Db, state: Arc<RwLock<BtnState>>) -> Arc<AtomicBool> {
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let sd = shutdown.clone();
-    tokio::spawn(async move {
+/// 启动 BTN 后台调度（拉 config → 下行更新状态 + 上行提交）。返回 AbortHandle 供热停。
+pub fn spawn(cfg: BtnRuntimeConfig, db: Db, state: Arc<RwLock<BtnState>>) -> AbortHandle {
+    let handle = tokio::spawn(async move {
         let client = BtnClient::new(
             cfg.app_id.clone(),
             cfg.app_secret.clone(),
             cfg.installation_id.clone(),
-            "",
+            &cfg.proxy,
         );
         loop {
-            if sd.load(Ordering::Relaxed) {
-                return;
-            }
             match client.fetch_config(&cfg.config_url).await {
                 Ok(config) => {
                     tracing::info!(
@@ -80,26 +77,25 @@ pub fn spawn(cfg: BtnRuntimeConfig, db: Db, state: Arc<RwLock<BtnState>>) -> Arc
                             "modern"
                         }
                     );
-                    run_abilities(&client, &config, &cfg, &db, &state, &sd).await;
+                    run_abilities(&client, &config, &cfg, &db, &state).await;
                 }
                 Err(e) => {
                     tracing::warn!("BTN config 拉取失败: {e};600s 后重试");
-                    sleep_checked(&sd, 600).await;
+                    tokio::time::sleep(Duration::from_secs(600)).await;
                 }
             }
         }
     });
-    shutdown
+    handle.abort_handle()
 }
 
-/// 按各 ability 的 interval 周期执行下行/上行。直到停止标志置位。
+/// 按各 ability 的 interval 周期执行下行/上行。直到任务被 abort 或 config 老化。
 async fn run_abilities(
     client: &BtnClient,
     config: &BtnConfigResponse,
     cfg: &BtnRuntimeConfig,
     db: &Db,
     state: &Arc<RwLock<BtnState>>,
-    sd: &Arc<AtomicBool>,
 ) {
     let mut last: HashMap<String, i64> = HashMap::new();
     let mut rules_rev = String::new();
@@ -108,9 +104,6 @@ async fn run_abilities(
     // config 每 ~1h 重拉一次（让外层 loop 重新 fetch_config）。
     let config_started = now_ms();
     loop {
-        if sd.load(Ordering::Relaxed) {
-            return;
-        }
         let now = now_ms();
         for (key, ab) in &config.ability {
             let interval = ab.interval.unwrap_or(3_600_000).max(1000);
@@ -170,7 +163,7 @@ async fn run_abilities(
         if now_ms() - config_started > 3_600_000 {
             return;
         }
-        sleep_checked(sd, 30).await;
+        tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
 
@@ -303,15 +296,6 @@ fn iso8601(ms: i64) -> String {
         .single()
         .map(|dt| dt.to_rfc3339())
         .unwrap_or_default()
-}
-
-async fn sleep_checked(sd: &Arc<AtomicBool>, secs: u64) {
-    for _ in 0..secs {
-        if sd.load(Ordering::Relaxed) {
-            return;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
 }
 
 fn now_ms() -> i64 {

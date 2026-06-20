@@ -2,6 +2,7 @@
 //!
 //! 不复刻上游 Vue/StdResp/Gson;Bearer token 鉴权;内置 vanilla 单页(`include_str!` 内嵌)。
 
+mod btn_manager;
 mod envelope;
 mod routes;
 
@@ -15,6 +16,7 @@ use pbh_engine::BanManager;
 use pbh_geoip::GeoIpHandle;
 use pbh_storage::Db;
 
+pub use btn_manager::BtnManager;
 pub use envelope::{ApiResp, Page};
 
 /// Web 层共享状态。
@@ -28,8 +30,8 @@ pub struct WebState {
     pub logs: Arc<LogBuffer>,
     /// GeoIP 句柄（供 list_bans + profile 热重载时重建 IPBlackList）。
     pub geoip: GeoIpHandle,
-    /// BTN 共享状态（供 profile 热重载时重建 BtnNetworkOnline）。
-    pub btn_state: Option<pbh_btn::SharedBtnState>,
+    /// BTN 热启停管理器（供 profile 热重载时重建 BtnNetworkOnline）。
+    pub btn: std::sync::Arc<BtnManager>,
     /// 防止 GeoIP 更新并发触发(重复下载/写竞争)。
     pub geoip_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
