@@ -123,18 +123,24 @@
 <body>
 
 <header id="topbar" class="hidden">
-  <div class="logo"><span class="dot"></span>PeerBanHelper<span class="mut" style="font-weight:500;font-size:12px">Rust</span></div>
+  <div class="logo"><span class="dot"></span>PeerBanHelper-Rust<span class="pill gray" id="verTag" style="margin-left:4px">…</span></div>
   <nav id="nav">
     <a href="#dashboard">仪表盘</a>
     <a href="#bans">封禁列表</a>
     <a href="#history">封禁历史</a>
-    <a href="#downloaders">下载器</a>
     <a href="#rules">规则配置</a>
+    <a href="#settings">设置</a>
     <a href="#logs">实时日志</a>
   </nav>
+  <a id="updBadge" class="pill red hidden" href="#" target="_blank" rel="noopener" style="text-decoration:none">有新版本</a>
   <span class="hstat" id="hstat">—</span>
-  <button class="hbtn" id="themeBtn" title="切换主题">🌙</button>
-  <button class="hbtn" id="logoutBtn" title="退出">⏻</button>
+  <a class="hbtn" id="ghBtn" href="https://github.com/Well2333/peerbanhelper-rust" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">
+    <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
+  <button class="hbtn" id="themeBtn" title="切换主题" aria-label="切换主题"></button>
+  <button class="hbtn" id="logoutBtn" title="退出" aria-label="退出">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+  </button>
 </header>
 
 <main id="app" class="hidden">
@@ -249,6 +255,13 @@
     </div>
   </section>
 
+  <!-- 设置 -->
+  <section class="page" id="page-settings">
+    <h1 class="ptitle">设置</h1>
+    <p class="pdesc">应用配置。</p>
+    <div class="card"><div class="empty">设置页面开发中…</div></div>
+  </section>
+
   <!-- 日志 -->
   <section class="page" id="page-logs">
     <h1 class="ptitle">实时日志</h1>
@@ -293,6 +306,8 @@ async function api(path, opts={}) {
   return r.json();
 }
 
+function loadAppConfig(){} // placeholder — Task 12 will implement
+
 /* ---- 鉴权 ---- */
 async function doLogin(){
   const t = el('tok').value.trim();
@@ -311,12 +326,18 @@ function show(authed){
 el('logoutBtn').onclick = logout;
 
 /* ---- 主题 ---- */
-function applyTheme(t){ document.documentElement.setAttribute('data-theme',t); localStorage.setItem('pbh_theme',t); el('themeBtn').textContent = t==='dark'?'🌙':'☀️'; }
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('pbh_theme',t);
+  el('themeBtn').innerHTML = t==='dark'
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
+}
 el('themeBtn').onclick = ()=>applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');
 applyTheme(localStorage.getItem('pbh_theme')||'dark');
 
 /* ---- 路由 ---- */
-const PAGES = ['dashboard','bans','history','downloaders','rules','logs'];
+const PAGES = ['dashboard','bans','history','rules','settings','logs'];
 function route(){
   let h = (location.hash||'#dashboard').slice(1);
   if(!PAGES.includes(h)) h='dashboard';
@@ -324,7 +345,7 @@ function route(){
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+h));
   if(h==='history') loadHistory();
   if(h==='rules') loadProfile();
-  if(h==='downloaders') loadDownloaders();
+  if(h==='settings') loadAppConfig();
   if(h==='bans') loadBans();
   if(h==='dashboard') refreshDashboard();
 }
@@ -334,6 +355,7 @@ window.addEventListener('hashchange', route);
 async function refreshDashboard(){
   let j; try{ j=await api('/api/status'); }catch(e){ return; }
   const d=j.data; if(!d) return;
+  el('verTag').textContent='v'+(d.version||'');
   el('hstat').textContent = `下载器 ${d.downloaders} · 模块 ${d.modules} · 封禁 ${d.banned}`;
   const s=d.stats||{};
   const cards=[
@@ -360,6 +382,12 @@ async function refreshDashboard(){
         <button class="danger sm" onclick="delDl('${c.id}')">删除</button></div>
     </div>`;
   }).join('') : '<div class="empty">还没有下载器。去「下载器」页添加一个 qBittorrent 即可开始自动封禁。</div>';
+}
+
+async function checkUpdate(){
+  try{ const j=await api('/api/update/check'); const d=j.data;
+    if(d&&d.newer){ const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden'); }
+  }catch(e){}
 }
 
 /* ---- 下载器 ---- */
@@ -519,7 +547,7 @@ function connectLogWs(){
 function stopLogWs(){ if(logWs){ try{logWs.onclose=null; logWs.close();}catch(e){} logWs=null; } }
 
 /* ---- 轮询（状态/封禁；日志走 WS）---- */
-function startPoll(){ stopPoll(); connectLogWs(); refreshDashboard(); pollTimer=setInterval(()=>{
+function startPoll(){ stopPoll(); connectLogWs(); refreshDashboard(); checkUpdate(); pollTimer=setInterval(()=>{
   if(document.hidden) return;
   const cur=(location.hash||'#dashboard').slice(1);
   refreshDashboard();
