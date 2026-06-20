@@ -205,22 +205,36 @@ async fn status(State(st): State<WebState>) -> Response {
 
 async fn get_profile(State(st): State<WebState>) -> Response {
     let profile = st.config.current().profile.clone();
-    match serde_yaml::to_string(&profile) {
-        Ok(yaml) => ApiResp::ok(json!({ "yaml": yaml })).into_response(),
-        Err(e) => bad_request(format!("序列化 profile 失败: {e}")),
-    }
+    let yaml = match serde_yaml::to_string(&profile) {
+        Ok(y) => y,
+        Err(e) => return bad_request(format!("序列化 profile 失败: {e}")),
+    };
+    let profile_json = serde_json::to_value(&profile).unwrap_or(serde_json::Value::Null);
+    ApiResp::ok(json!({ "yaml": yaml, "profile": profile_json })).into_response()
 }
 
 #[derive(Deserialize)]
 struct ProfileBody {
-    yaml: String,
+    #[serde(default)]
+    yaml: Option<String>,
+    #[serde(default)]
+    profile: Option<serde_json::Value>,
 }
 
 async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> Response {
-    // 解析校验。
-    let profile: ProfileConfig = match serde_yaml::from_str(&b.yaml) {
-        Ok(p) => p,
-        Err(e) => return bad_request(format!("YAML 解析失败: {e}")),
+    // 解析校验：优先使用 profile JSON，回退到 yaml。
+    let profile: ProfileConfig = if let Some(v) = b.profile {
+        match serde_json::from_value(v) {
+            Ok(p) => p,
+            Err(e) => return bad_request(format!("profile JSON 解析失败: {e}")),
+        }
+    } else if let Some(y) = b.yaml {
+        match serde_yaml::from_str(&y) {
+            Ok(p) => p,
+            Err(e) => return bad_request(format!("YAML 解析失败: {e}")),
+        }
+    } else {
+        return bad_request("缺少 yaml 或 profile");
     };
     // 写盘 + 热重载配置。
     if let Err(e) = st.config.save_profile(&profile) {
@@ -702,6 +716,26 @@ fn gen_id() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("d{t:x}")
+}
+
+#[cfg(test)]
+mod profile_json_tests {
+    use pbh_config::ProfileConfig;
+
+    #[test]
+    fn profile_json_roundtrip_preserves_module_keys() {
+        let yaml = "check-interval: 4000\nban-duration: 600000\nignore-peers-from-addresses: []\nmodule:\n  peer-id-blacklist:\n    enabled: true\n    banned-peer-id:\n    - method: STARTS_WITH\n      content: -XL\n";
+        let p: ProfileConfig = serde_yaml::from_str(yaml).unwrap();
+        // ProfileConfig -> serde_json::Value -> ProfileConfig
+        let jv = serde_json::to_value(&p).unwrap();
+        let back: ProfileConfig = serde_json::from_value(jv).unwrap();
+        assert_eq!(back.check_interval, 4000);
+        assert_eq!(back.ban_duration, 600000);
+        // module key preserved
+        assert!(back.module_section("peer-id-blacklist").is_some());
+        let sec = back.module_section("peer-id-blacklist").unwrap();
+        assert_eq!(sec.get("enabled").unwrap().as_bool(), Some(true));
+    }
 }
 
 #[cfg(test)]
