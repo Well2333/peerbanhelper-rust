@@ -1,10 +1,10 @@
-//! pbh-geoip —— GeoIP 查询（MaxMind City/ASN）。对应 Java `util/ipdb/**`。
+//! pbh-geoip —— GeoIP 查询（MaxMind City/ASN/GeoCN）。对应 Java `util/ipdb/**`。
 //!
 //! **可选注入**能力（守则第 9 条）：拿不到 mmdb 文件时降级——`GeoIpProvider` 不存在，
 //! IPBlackList 的 ASN/region/city/net-type 检查全部跳过（pass），ip/port 仍生效。
 //!
-//! 当前实现标准 MaxMind City + ASN 读取。GeoCN（中国网络类型/行政区划）未移植——
-//! `net_type`/`cn_*` 字段保留但恒为 None（需 GeoCN 数据库,本环境无）。
+//! 当前实现标准 MaxMind City + ASN + GeoCN 读取。GeoCN 数据库（`GeoCN.mmdb`）提供
+//! 中国网络类型/行政区划，映射到 `net_type`/`cn_province`/`cn_city` 字段。
 
 pub mod download;
 
@@ -22,7 +22,7 @@ pub struct IpGeoData {
     pub city_name: Option<String>,
     pub asn: Option<u32>,
     pub as_organization: Option<String>,
-    /// 中国网络类型（来自 GeoCN，本实现恒 None）。
+    /// 中国网络类型（来自 GeoCN，需 `GeoCN.mmdb`）。
     pub net_type: Option<String>,
     pub cn_province: Option<String>,
     pub cn_city: Option<String>,
@@ -33,31 +33,51 @@ pub trait GeoIpProvider: Send + Sync {
     fn query(&self, ip: IpAddr) -> Option<IpGeoData>;
 }
 
-/// 基于 MaxMind mmdb 的查询实现（City + ASN，二者任一可缺）。
+/// GeoCN 记录（中国网络类型/行政区划）。字段均可缺。
+#[derive(Debug, serde::Deserialize)]
+pub struct GeoCnRecord {
+    #[serde(default)]
+    pub net: Option<String>,
+    #[serde(default)]
+    pub province: Option<String>,
+    #[serde(default)]
+    pub city: Option<String>,
+}
+
+/// 基于 MaxMind mmdb 的查询实现（City + ASN + GeoCN，三者任一可缺）。
 pub struct MaxmindProvider {
     city: Option<maxminddb::Reader<Vec<u8>>>,
     asn: Option<maxminddb::Reader<Vec<u8>>>,
+    cn: Option<maxminddb::Reader<Vec<u8>>>,
 }
 
 impl MaxmindProvider {
     /// 尝试加载 City / ASN mmdb。两者都加载失败则返回 None（降级）。
+    /// GeoCN 不通过此方法加载（cn 恒为 None）；请用 `load_from_dir` 同时加载 GeoCN。
     pub fn load(city_path: Option<&Path>, asn_path: Option<&Path>) -> Option<Self> {
         let city = city_path.and_then(|p| open(p, "City"));
         let asn = asn_path.and_then(|p| open(p, "ASN"));
         if city.is_none() && asn.is_none() {
             return None;
         }
-        Some(MaxmindProvider { city, asn })
+        Some(MaxmindProvider { city, asn, cn: None })
     }
 
-    /// 从一个目录约定加载：`<dir>/GeoLite2-City.mmdb` + `GeoLite2-ASN.mmdb`（或 GeoIP2 同名）。
+    /// 从一个目录约定加载：`<dir>/GeoLite2-City.mmdb` + `GeoLite2-ASN.mmdb`（或 GeoIP2 同名）+ `GeoCN.mmdb`。
     pub fn load_from_dir(dir: &Path) -> Option<Self> {
         let find = |names: &[&str]| -> Option<std::path::PathBuf> {
             names.iter().map(|n| dir.join(n)).find(|p| p.exists())
         };
         let city = find(&["GeoIP-City.mmdb", "GeoLite2-City.mmdb", "GeoIP2-City.mmdb", "City.mmdb"]);
         let asn = find(&["GeoIP-ASN.mmdb", "GeoLite2-ASN.mmdb", "GeoIP2-ASN.mmdb", "ASN.mmdb"]);
-        Self::load(city.as_deref(), asn.as_deref())
+        let cn_path = find(&["GeoCN.mmdb"]);
+        let city = city.as_deref().and_then(|p| open(p, "City"));
+        let asn = asn.as_deref().and_then(|p| open(p, "ASN"));
+        let cn = cn_path.as_deref().and_then(|p| open(p, "GeoCN"));
+        if city.is_none() && asn.is_none() && cn.is_none() {
+            return None;
+        }
+        Some(MaxmindProvider { city, asn, cn })
     }
 }
 
@@ -102,6 +122,13 @@ impl GeoIpProvider for MaxmindProvider {
             if let Ok(asn) = a.lookup::<maxminddb::geoip2::Asn>(ip) {
                 d.asn = asn.autonomous_system_number;
                 d.as_organization = asn.autonomous_system_organization.map(|s| s.to_string());
+            }
+        }
+        if let Some(c) = &self.cn {
+            if let Ok(rec) = c.lookup::<GeoCnRecord>(ip) {
+                d.net_type = rec.net;
+                d.cn_province = rec.province;
+                d.cn_city = rec.city;
             }
         }
         Some(d)
@@ -181,6 +208,16 @@ mod tests {
         }
         h.install(std::sync::Arc::new(Dummy));
         assert!(h2.is_loaded()); // install on one clone visible on the other
+    }
+
+    #[test]
+    fn geocn_record_deserializes() {
+        // 模拟 GeoCN 记录的 JSON 形态映射到内部结构。
+        let json = r#"{"net":"宽带","province":"上海","city":"上海"}"#;
+        let r: GeoCnRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(r.net.as_deref(), Some("宽带"));
+        assert_eq!(r.province.as_deref(), Some("上海"));
+        assert_eq!(r.city.as_deref(), Some("上海"));
     }
 
     #[test]
