@@ -41,11 +41,13 @@ pub struct IpBlackRuleList {
 
 impl IpBlackRuleList {
     /// 构造并启动后台刷新任务（立即一次 + 每 `check_interval_ms`）。
+    /// `proxy` 为空字符串时不使用代理，与 `pbh_net::build_client` 语义相同。
     pub fn new(
         ban_duration: i64,
         subs: Vec<SubConfig>,
         check_interval_ms: i64,
         db: Db,
+        proxy: &str,
     ) -> Arc<Self> {
         let matchers: Arc<RwLock<Vec<SubMatcher>>> = Arc::new(RwLock::new(Vec::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -54,7 +56,7 @@ impl IpBlackRuleList {
             matchers: matchers.clone(),
             shutdown: shutdown.clone(),
         });
-        let http = pbh_net::build_client("", Duration::from_secs(45));
+        let http = pbh_net::build_client(proxy, Duration::from_secs(45));
         let interval_secs = (check_interval_ms / 1000).clamp(60, 86_400) as u64;
         tokio::spawn(async move {
             loop {

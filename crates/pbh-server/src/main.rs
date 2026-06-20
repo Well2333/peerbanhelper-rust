@@ -91,6 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &db,
         &geoip,
         &btn_state,
+        &app_cfg.network.proxy,
     );
     let module_count = modules.len();
     // BTN 开启上报时跟踪 swarm（供 submit_swarm）。

@@ -249,6 +249,7 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
+        &st.config.current().app.network.proxy,
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -346,6 +347,7 @@ async fn put_app_config(State(st): State<WebState>, Json(b): Json<AppConfigBody>
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
+        &app.network.proxy,
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -609,6 +611,7 @@ async fn save_and_rebuild(
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
+        &st.config.current().app.network.proxy,
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);

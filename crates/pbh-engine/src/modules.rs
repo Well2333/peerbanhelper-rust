@@ -58,6 +58,7 @@ pub fn build_modules(
     db: &Db,
     geoip: &GeoIpHandle,
     btn_state: &Option<SharedBtnState>,
+    proxy: &str,
 ) -> Vec<Arc<dyn RuleFeatureModule>> {
     let mut out: Vec<Arc<dyn RuleFeatureModule>> = Vec::new();
 
@@ -214,6 +215,7 @@ pub fn build_modules(
             subs,
             check_interval,
             db.clone(),
+            proxy,
         ));
     }
 
