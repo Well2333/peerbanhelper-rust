@@ -365,8 +365,13 @@ async fn upsert_downloader(
     if cfg.id.trim().is_empty() {
         cfg.id = gen_id();
     }
+    let id = cfg.id.clone();
     match st.downloaders.upsert(cfg) {
-        Ok(()) => ApiResp::ok_empty().into_response(),
+        Ok(()) => {
+            // 配置（如修正密码）变更后清登录闸门，使下一轮立即重试。
+            st.ban_manager.clear_login_gate(&id);
+            ApiResp::ok_empty().into_response()
+        }
         Err(e) => bad_request(e.to_string()),
     }
 }
