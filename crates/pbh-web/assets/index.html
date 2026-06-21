@@ -300,6 +300,15 @@
       <div class="row" style="margin-top:10px"><span class="sp"></span><button onclick="saveAppConfig('net')">保存代理</button></div>
       <div id="cfgMsg" class="mut" style="margin-top:9px"></div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>ℹ️ 关于 / 检查更新</h3>
+      <p class="mut" style="margin-top:-4px">当前版本 <b id="aboutVer">…</b> · 仓库 <a href="https://github.com/Well2333/peerbanhelper-rust" target="_blank" rel="noopener">Well2333/peerbanhelper-rust</a></p>
+      <div class="row" style="margin-top:6px">
+        <button class="ghost" onclick="manualCheckUpdate()">检查更新</button>
+        <span id="updResult" class="mut"></span>
+      </div>
+    </div>
   </section>
 
   <!-- 日志 -->
@@ -377,6 +386,7 @@ async function loadAppConfig(){
   el('cfg_btn_secret').value=b.app_secret||''; el('cfg_btn_url').value=b.config_url||''; el('cfg_btn_submit').checked=b.submit!==false;
   el('cfg_ip_account').value=ip.account_id||''; el('cfg_ip_license').value=ip.license_key||''; el('cfg_ip_auto').checked=ip.auto_update!==false;
   el('cfg_proxy').value=n.proxy||'';
+  el('aboutVer').textContent=el('verTag').textContent||'…';
   loadNetinfo();
 }
 async function saveAppConfig(which){
@@ -497,6 +507,20 @@ async function checkUpdate(){
   try{ const j=await api('/api/update/check'); const d=j.data;
     if(d&&d.newer){ const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden'); }
   }catch(e){}
+}
+async function manualCheckUpdate(){
+  const r=el('updResult'); r.innerHTML='检查中…';
+  try{
+    const j=await api('/api/update/check');
+    if(!j.ok){ r.innerHTML='<span class="bad">✗ '+esc(j.error||'检查失败')+'</span>'; return; }
+    const d=j.data||{}; el('aboutVer').textContent='v'+(d.current||'');
+    if(d.newer){
+      r.innerHTML='<span class="ok">发现新版本 '+esc(d.latest)+'</span> <a href="'+esc(d.html_url||'#')+'" target="_blank" rel="noopener">前往下载 →</a>';
+      const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden');
+    } else {
+      r.innerHTML='<span class="mut">已是最新('+esc(d.latest||d.current||'')+')</span>';
+    }
+  }catch(e){ r.innerHTML='<span class="bad">✗ 请求失败</span>'; }
 }
 
 /* ---- 下载器 ---- */
