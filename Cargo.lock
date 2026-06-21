@@ -1463,7 +1463,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pbh-btn"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "flate2",
@@ -1482,7 +1482,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-config"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pbh-domain",
  "serde",
@@ -1495,14 +1495,14 @@ dependencies = [
 
 [[package]]
 name = "pbh-domain"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "pbh-downloader"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "ipnet",
@@ -1520,7 +1520,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "hickory-resolver",
  "ip_network",
@@ -1545,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-geoip"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "arc-swap",
  "maxminddb",
@@ -1557,7 +1557,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-net"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "reqwest",
  "tracing",
@@ -1565,7 +1565,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-rules"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ip_network",
  "ip_network_table",
@@ -1582,7 +1582,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.2.17",
  "pbh-btn",
@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pbh-domain",
  "serde",
@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "pbh-web"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "flate2",

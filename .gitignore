@@ -13,3 +13,4 @@ Cargo.lock.bak
 .DS_Store
 /dist
 /1781892843591_d.png
+.claude/settings.local.json

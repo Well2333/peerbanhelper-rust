@@ -17,7 +17,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # 遵循上游 PeerBanHelper（PBH-BTN/PeerBanHelper）的 GPL-3.0 许可。
 license = "GPL-3.0-or-later"
