@@ -40,6 +40,22 @@ pub fn url_for(mirror: &str, file: &str) -> String {
     format!("{mirror}{file}")
 }
 
+/// 三个库是否都已落地（用于判断后台下载是否可停止）。
+pub fn all_present(dir: &Path) -> bool {
+    FILES.iter().all(|f| dir.join(f).exists())
+}
+
+/// 后台重试间隔（秒），随次数递增，封顶 10 分钟。
+pub fn retry_backoff_secs(attempt: u32) -> u64 {
+    match attempt {
+        0 | 1 => 30,
+        2 => 60,
+        3 => 120,
+        4 => 300,
+        _ => 600,
+    }
+}
+
 /// 下载一个库到目标路径。逐镜像尝试;镜像 401 时带上 Basic 凭证重试该镜像。成功返回 true。
 pub async fn download_one(
     client: &reqwest::Client,

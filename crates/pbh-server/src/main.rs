@@ -144,25 +144,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .spawn_loop(cfg.profile.check_interval as u64);
 
-    // GeoIP 自动下载(缺文件或过期);完成后热替换 provider。
+    // GeoIP 自动下载:已有且有效的本地库直接复用;缺失/过期则后台下载,失败按退避重试直到三库齐全。
     {
         let geoip = geoip.clone();
         let geoip_dir = ctx.paths.data_dir().join("geoip");
-        let app_cfg = ctx.config.current().app.clone();
+        let config = ctx.config.clone();
         tokio::spawn(async move {
-            let client = pbh_net::build_client(&app_cfg.network.proxy, std::time::Duration::from_secs(60));
-            let changed = pbh_geoip::download::ensure_databases(
-                &client,
-                &geoip_dir,
-                app_cfg.ip_database.auto_update,
-                &app_cfg.ip_database.account_id,
-                &app_cfg.ip_database.license_key,
-            ).await;
-            if changed || !geoip.is_loaded() {
-                if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&geoip_dir) {
-                    geoip.install(std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>);
-                    tracing::info!("GeoIP 库已就绪并热加载");
+            let mut attempt: u32 = 0;
+            loop {
+                let app_cfg = config.current().app.clone(); // 每轮重读,代理改动可生效
+                let client = pbh_net::build_client(
+                    &app_cfg.network.proxy,
+                    std::time::Duration::from_secs(60),
+                );
+                let changed = pbh_geoip::download::ensure_databases(
+                    &client,
+                    &geoip_dir,
+                    app_cfg.ip_database.auto_update,
+                    &app_cfg.ip_database.account_id,
+                    &app_cfg.ip_database.license_key,
+                )
+                .await;
+                if changed || !geoip.is_loaded() {
+                    if let Some(p) = pbh_geoip::MaxmindProvider::load_from_dir(&geoip_dir) {
+                        geoip.install(
+                            std::sync::Arc::new(p) as std::sync::Arc<dyn pbh_geoip::GeoIpProvider>
+                        );
+                        tracing::info!("GeoIP 库已就绪并热加载");
+                    }
                 }
+                if pbh_geoip::download::all_present(&geoip_dir) {
+                    break; // 三库齐全,停止后台重试
+                }
+                attempt += 1;
+                let wait = pbh_geoip::download::retry_backoff_secs(attempt);
+                tracing::warn!("GeoIP 部分库未就绪,{wait}s 后后台重试(第 {attempt} 次)");
+                tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
             }
         });
     }
