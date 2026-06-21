@@ -37,6 +37,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/logs", get(get_logs))
         .route("/api/geoip/update", post(geoip_update))
         .route("/api/update/check", get(update_check))
+        .route("/api/netinfo", get(netinfo))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
     Router::new()
@@ -716,6 +717,53 @@ async fn update_check(State(st): State<WebState>) -> Response {
         Ok(r) => bad_request(format!("GitHub 返回 {}", r.status())),
         Err(e) => bad_request(format!("请求失败: {e}")),
     }
+}
+
+/// 枚举本机非回环 IPv4 地址（LAN + 公网 IP 查询）。
+async fn netinfo(State(st): State<WebState>) -> Response {
+    let app = st.config.current().app.clone();
+    let mut lan: Vec<String> = Vec::new();
+
+    // 通过 libc::getifaddrs 枚举网卡地址（仅保留非回环、非链路本地 IPv4）。
+    unsafe {
+        let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
+        if libc::getifaddrs(&mut ifap) == 0 {
+            let mut cur = ifap;
+            while !cur.is_null() {
+                let ifa = &*cur;
+                let sa = ifa.ifa_addr;
+                if !sa.is_null() && (*sa).sa_family as libc::c_int == libc::AF_INET {
+                    let sin = sa as *const libc::sockaddr_in;
+                    let raw = u32::from_be((*sin).sin_addr.s_addr);
+                    let v4 = std::net::Ipv4Addr::from(raw);
+                    if !v4.is_loopback() && !v4.is_link_local() {
+                        let s = v4.to_string();
+                        if !lan.contains(&s) {
+                            lan.push(s);
+                        }
+                    }
+                }
+                cur = ifa.ifa_next;
+            }
+            libc::freeifaddrs(ifap);
+        }
+    }
+
+    let client = pbh_net::build_client(
+        &app.network.proxy,
+        std::time::Duration::from_secs(8),
+    );
+    let public: Option<String> = match client.get("https://api.ipify.org").send().await {
+        Ok(r) if r.status().is_success() => r
+            .text()
+            .await
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| s.parse::<std::net::IpAddr>().is_ok()),
+        _ => None,
+    };
+
+    ApiResp::ok(json!({ "lan": lan, "public": public })).into_response()
 }
 
 fn gen_id() -> String {

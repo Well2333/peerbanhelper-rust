@@ -246,6 +246,12 @@
     <p class="pdesc">基础设施配置(<code>config.yml</code>)。保存即热生效,无需重启。</p>
 
     <div class="card" style="margin-bottom:16px">
+      <h3>🖧 本机网络地址</h3>
+      <p class="mut" style="margin-top:-4px">用于在下载器中配置 IP 白名单网段(放行你自己的连接)。点击可复制。</p>
+      <div id="netinfo" class="mut">加载中…</div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h3>☁️ BTN 云端威胁情报</h3>
       <p class="mut" style="margin-top:-4px">加入 BTN 共享封禁情报。需在 <a href="https://github.com/PBH-BTN/PeerBanHelper" target="_blank" rel="noopener">BTN</a> 申请 app-id / app-secret。</p>
       <label class="row" style="gap:6px;margin-bottom:8px"><input type="checkbox" id="cfg_btn_enabled"> 启用 BTN</label>
@@ -357,6 +363,7 @@ async function loadAppConfig(){
   el('cfg_btn_secret').value=b.app_secret||''; el('cfg_btn_url').value=b.config_url||''; el('cfg_btn_submit').checked=b.submit!==false;
   el('cfg_ip_account').value=ip.account_id||''; el('cfg_ip_license').value=ip.license_key||''; el('cfg_ip_auto').checked=ip.auto_update!==false;
   el('cfg_proxy').value=n.proxy||'';
+  loadNetinfo();
 }
 async function saveAppConfig(which){
   const body={};
@@ -373,6 +380,23 @@ async function updateGeoip(){
   const j=await api('/api/geoip/update',{method:'POST'});
   if(j.ok){ el('geoipStat').textContent = j.data.loaded?('✓ 已加载'+(j.data.changed?'(已更新)':'')):'✗ 未能加载'; toast('GeoIP 更新完成'); }
   else { el('geoipStat').textContent='✗ 失败'; toast(j.error||'失败',true); }
+}
+function copyText(t){ navigator.clipboard?.writeText(t).then(()=>toast('已复制 '+t)).catch(()=>toast('复制失败',true)); }
+function subnet24(ip){ const p=ip.split('.'); return p.length===4 ? p[0]+'.'+p[1]+'.'+p[2]+'.0/24' : ''; }
+async function loadNetinfo(){
+  try{
+    const j=await api('/api/netinfo'); const d=j.data||{}; const box=el('netinfo');
+    const rows=[];
+    (d.lan||[]).forEach(ip=>{
+      const sn=subnet24(ip);
+      rows.push(`<div class="row" style="gap:8px;margin:4px 0"><span class="pill gray">局域网</span><b>${esc(ip)}</b>
+        <button class="ghost sm" onclick="copyText('${esc(ip)}')">复制 IP</button>
+        ${sn?`<button class="ghost sm" onclick="copyText('${esc(sn)}')">复制网段 ${esc(sn)}</button>`:''}</div>`);
+    });
+    if(d.public) rows.push(`<div class="row" style="gap:8px;margin:4px 0"><span class="pill">公网</span><b>${esc(d.public)}</b>
+      <button class="ghost sm" onclick="copyText('${esc(d.public)}')">复制</button></div>`);
+    box.innerHTML = rows.length? rows.join('') : '<span class="mut">未获取到地址</span>';
+  }catch(e){ el('netinfo').innerHTML='<span class="bad">加载失败</span>'; }
 }
 
 /* ---- 鉴权 ---- */
