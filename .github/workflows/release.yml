@@ -59,6 +59,9 @@ jobs:
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           echo "ASSET=dist/$name.tar.gz" >> "$GITHUB_ENV"
           echo "ASSET_NAME=$name" >> "$GITHUB_ENV"
+          # 自更新资产：gzip 压缩的裸二进制（命名固定为 pbh-rust-<target>.gz，供 /api/update/apply 下载）
+          gzip -c "target/${{ matrix.target }}/release/pbh" > "dist/pbh-rust-${{ matrix.target }}.gz"
+          echo "ASSET_SELF=dist/pbh-rust-${{ matrix.target }}.gz" >> "$GITHUB_ENV"
 
       - name: Package (windows)
         if: matrix.archive == 'zip'
@@ -72,6 +75,14 @@ jobs:
           Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
           "ASSET=dist/$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ASSET_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # 自更新资产：gzip 压缩的裸 exe（命名固定为 pbh-rust-<target>.gz）
+          $src = "target/${{ matrix.target }}/release/pbh.exe"
+          $self = "dist/pbh-rust-${{ matrix.target }}.gz"
+          $in = [System.IO.File]::OpenRead($src)
+          $out = [System.IO.File]::Create($self)
+          $gz = New-Object System.IO.Compression.GzipStream($out, [System.IO.Compression.CompressionMode]::Compress)
+          $in.CopyTo($gz); $gz.Close(); $out.Close(); $in.Close()
+          "ASSET_SELF=$self" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -83,5 +94,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET_SELF }}
           fail_on_unmatched_files: true

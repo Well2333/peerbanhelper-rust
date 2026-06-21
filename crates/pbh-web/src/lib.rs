@@ -5,6 +5,7 @@
 mod btn_manager;
 mod envelope;
 mod routes;
+mod selfupdate;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -39,7 +40,26 @@ pub struct WebState {
 /// 启动 HTTP 服务（阻塞直到出错/关闭）。
 pub async fn serve(state: WebState, addr: SocketAddr) -> std::io::Result<()> {
     let app = routes::router(state);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = bind_with_retry(addr).await?;
     tracing::info!("Web 已监听 http://{addr}");
     axum::serve(listener, app).await
+}
+
+/// 绑定端口；地址被占用时短暂重试（自更新重启后旧进程可能尚未完全释放端口）。
+async fn bind_with_retry(addr: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+    let mut last_err = None;
+    for attempt in 0..12 {
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => return Ok(l),
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                if attempt == 0 {
+                    tracing::warn!("端口 {addr} 暂被占用，重试绑定中…");
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                last_err = Some(e);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::AddrInUse, "绑定端口失败")))
 }

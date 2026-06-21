@@ -306,8 +306,10 @@
       <p class="mut" style="margin-top:-4px">当前版本 <b id="aboutVer">…</b> · 仓库 <a href="https://github.com/Well2333/peerbanhelper-rust" target="_blank" rel="noopener">Well2333/peerbanhelper-rust</a></p>
       <div class="row" style="margin-top:6px">
         <button class="ghost" onclick="manualCheckUpdate()">检查更新</button>
+        <button id="updApplyBtn" class="hidden" onclick="applyUpdate()">下载并自动更新</button>
         <span id="updResult" class="mut"></span>
       </div>
+      <p class="mut" style="margin-top:8px;font-size:12px">自动更新会下载对应平台的新版二进制、替换当前程序并自动重启(需对程序文件有写权限)。更新后本页会短暂断连,请稍候刷新。</p>
     </div>
   </section>
 
@@ -517,10 +519,41 @@ async function manualCheckUpdate(){
     if(d.newer){
       r.innerHTML='<span class="ok">发现新版本 '+esc(d.latest)+'</span> <a href="'+esc(d.html_url||'#')+'" target="_blank" rel="noopener">前往下载 →</a>';
       const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden');
+      el('updApplyBtn').classList.remove('hidden');
     } else {
       r.innerHTML='<span class="mut">已是最新('+esc(d.latest||d.current||'')+')</span>';
+      el('updApplyBtn').classList.add('hidden');
     }
   }catch(e){ r.innerHTML='<span class="bad">✗ 请求失败</span>'; }
+}
+async function applyUpdate(){
+  if(!confirm('将下载新版二进制、替换当前程序并自动重启。确定继续?'))return;
+  const r=el('updResult'); const btn=el('updApplyBtn'); btn.disabled=true;
+  r.innerHTML='下载并替换中,请勿关闭…';
+  try{
+    const j=await api('/api/update/apply',{method:'POST'});
+    if(!j.ok){ r.innerHTML='<span class="bad">✗ '+esc(j.error||'更新失败')+'</span>'; btn.disabled=false; return; }
+    if(j.data&&j.data.updated){
+      r.innerHTML='<span class="ok">✓ 已下载并替换,正在重启…</span> <span class="mut">稍候自动恢复</span>';
+      toast('更新完成,正在重启');
+      waitForRestart(j.data.latest);
+    } else {
+      r.innerHTML='<span class="mut">'+esc((j.data&&j.data.reason)||'已是最新')+'</span>'; btn.disabled=false;
+    }
+  }catch(e){ r.innerHTML='<span class="bad">✗ 请求失败</span>'; btn.disabled=false; }
+}
+// 轮询 /api/status 直到服务重启回来(版本变为目标版本)。
+function waitForRestart(target){
+  let n=0;
+  const t=setInterval(async()=>{
+    n++;
+    try{ const j=await api('/api/status'); const v=j.data&&j.data.version;
+      if(v){ clearInterval(t); el('updResult').innerHTML='<span class="ok">✓ 已更新并重启,当前 v'+esc(v)+'</span>';
+        el('verTag').textContent='v'+v; el('updBadge').classList.add('hidden'); el('updApplyBtn').classList.add('hidden'); el('updApplyBtn').disabled=false;
+        toast('已更新到 v'+v); }
+    }catch(e){ /* 重启期间连接失败,继续等 */ }
+    if(n>40){ clearInterval(t); el('updResult').innerHTML='<span class="mut">重启耗时较长,请手动刷新页面确认</span>'; }
+  }, 1500);
 }
 
 /* ---- 下载器 ---- */

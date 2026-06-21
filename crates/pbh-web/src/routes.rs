@@ -37,6 +37,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/logs", get(get_logs))
         .route("/api/geoip/update", post(geoip_update))
         .route("/api/update/check", get(update_check))
+        .route("/api/update/apply", post(apply_update))
         .route("/api/netinfo", get(netinfo))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
 
@@ -716,6 +717,57 @@ async fn update_check(State(st): State<WebState>) -> Response {
         },
         Ok(r) => bad_request(format!("GitHub 返回 {}", r.status())),
         Err(e) => bad_request(format!("请求失败: {e}")),
+    }
+}
+
+/// 下载最新 release 的本平台资产、替换当前可执行文件并重启（自更新）。
+async fn apply_update(State(st): State<WebState>) -> Response {
+    let current = env!("CARGO_PKG_VERSION");
+    let Some(asset) = crate::selfupdate::asset_name() else {
+        return bad_request("当前平台不支持自动更新，请前往 Release 手动下载");
+    };
+    let app = st.config.current().app.clone();
+    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(20));
+    let url = "https://api.github.com/repos/Well2333/peerbanhelper-rust/releases/latest";
+    let j: serde_json::Value = match client.get(url).send().await {
+        Ok(r) if r.status().is_success() => match r.json().await {
+            Ok(v) => v,
+            Err(e) => return bad_request(format!("解析失败: {e}")),
+        },
+        Ok(r) => return bad_request(format!("GitHub 返回 {}", r.status())),
+        Err(e) => return bad_request(format!("请求失败: {e}")),
+    };
+    let latest = j.get("tag_name").and_then(|v| v.as_str()).unwrap_or("");
+    if latest.is_empty() || !version_newer(current, latest) {
+        return ApiResp::ok(
+            json!({ "updated": false, "reason": "已是最新", "current": current, "latest": latest }),
+        )
+        .into_response();
+    }
+    // 在该 release 的 assets 中找本平台资产。
+    let dl = j
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .find(|a| a.get("name").and_then(|n| n.as_str()) == Some(asset.as_str()))
+                .and_then(|a| a.get("browser_download_url").and_then(|u| u.as_str()))
+                .map(|s| s.to_string())
+        });
+    let Some(dl) = dl else {
+        return bad_request(format!(
+            "该版本未提供本平台自动更新包（{asset}），请前往 Release 手动下载"
+        ));
+    };
+    // 大文件下载用更长超时。
+    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(180));
+    match crate::selfupdate::download_and_replace(&client, &dl).await {
+        Ok(exe) => {
+            crate::selfupdate::spawn_restart(exe);
+            ApiResp::ok(json!({ "updated": true, "latest": latest, "restarting": true }))
+                .into_response()
+        }
+        Err(e) => bad_request(e),
     }
 }
 

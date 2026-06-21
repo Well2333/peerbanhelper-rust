@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
+flate2 = { workspace = true }
 
 # 本机网卡枚举（getifaddrs）仅 unix 用；Windows 走 std UDP 技巧，无需此依赖。
 [target.'cfg(unix)'.dependencies]
