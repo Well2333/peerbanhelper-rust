@@ -118,6 +118,20 @@
   #login { max-width:380px; margin:9vh auto; }
   .empty { text-align:center; color:var(--mut); padding:40px 0; }
   .hidden { display:none !important; }
+
+  /* 规则配置 — 分组折叠式 */
+  .rgroup { margin-bottom:18px; }
+  .rgroup > .rgh { font-size:13px; font-weight:650; color:var(--mut); margin:0 0 9px; letter-spacing:.3px; }
+  .rmod { border:1px solid var(--bd); border-radius:var(--radius); background:var(--card); margin-bottom:9px; overflow:hidden; }
+  .rmod.on { border-color:color-mix(in srgb,var(--acc) 45%,var(--bd)); }
+  .rmod-head { display:flex; align-items:center; gap:11px; padding:11px 14px; cursor:pointer; user-select:none; }
+  .rmod-head:hover { background:var(--card2); }
+  .rmod-name { font-weight:600; font-size:14px; }
+  .rmod-desc { color:var(--mut); font-size:12.5px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rmod-chev { color:var(--mut); transition:transform .18s; font-size:11px; }
+  .rmod.open .rmod-chev { transform:rotate(90deg); }
+  .rmod-body { padding:4px 14px 14px; border-top:1px solid var(--bd); }
+  .rmod-switch { display:inline-flex; align-items:center; }
 </style>
 </head>
 <body>
@@ -565,24 +579,24 @@ async function loadHistory(){
 
 /* ---- 规则配置 ---- */
 const RULE_MODULES = [
-  { key:'peer-id-blacklist', name:'PeerID 黑名单', defOn:true,
+  { key:'peer-id-blacklist', name:'PeerID 黑名单', group:'core', defOn:true,
     desc:'按 PeerID 前缀/包含/正则封禁已知吸血客户端(迅雷、IDM 等)。默认内置常见名单，留空则使用内置默认。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
       {map:'banned-peer-id', t:'lines', label:'PeerID 规则(每行 METHOD:content，如 STARTS_WITH:-XL)'},
     ]},
-  { key:'client-name-blacklist', name:'客户端名黑名单', defOn:true,
+  { key:'client-name-blacklist', name:'客户端名黑名单', group:'core', defOn:true,
     desc:'按握手上报的客户端名称封禁。支持 STARTS_WITH / CONTAINS / EQUALS / REGEX。留空则使用内置默认。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
       {map:'banned-client-name', t:'lines', label:'客户端名规则(每行 METHOD:content，如 CONTAINS:Xunlei)'},
     ]},
-  { key:'anti-vampire', name:'反吸血(AntiVampire)', defOn:true,
+  { key:'anti-vampire', name:'反吸血(AntiVampire)', group:'core', defOn:true,
     desc:'检测下载量严重超出实际上传量的吸血 peer（如迅雷等工具）。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
     ]},
-  { key:'progress-cheat-blocker', name:'进度欺骗拦截(PCB)', defOn:true,
+  { key:'progress-cheat-blocker', name:'进度欺骗拦截(PCB)', group:'core', defOn:true,
     desc:'检测虚报下载进度的 peer（吸血核心模块）。若 peer 上报进度与真实上传量偏差过大则封禁。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
@@ -599,19 +613,19 @@ const RULE_MODULES = [
       {k:'enable-persist', t:'toggle', label:'启用持久化(重启保留封禁)'},
       {k:'persist-duration', t:'num', label:'持久化有效期(分钟)', scale:60000},
     ]},
-  { key:'ip-address-blocker', name:'IP 地址黑名单', defOn:false,
+  { key:'ip-address-blocker', name:'IP 地址黑名单', group:'optional', defOn:false,
     desc:'按 IP/CIDR 封禁特定地址。ASN/地区/城市/网络类型过滤需在高级 YAML 中配置。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
       {map:'ips', t:'lines', label:'IP 列表(每行一个 IP 或 CIDR，如 1.2.3.0/24)'},
     ]},
-  { key:'ip-address-blocker-rules', name:'IP 订阅规则(订阅管理)', defOn:false,
+  { key:'ip-address-blocker-rules', name:'IP 订阅规则(订阅管理)', group:'optional', defOn:false,
     desc:'从远程订阅列表自动更新 IP 黑名单。订阅条目请使用下方「IP 黑名单订阅」管理界面添加/删除。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
       {k:'check-interval', t:'num', label:'订阅刷新间隔(分钟)', scale:60000},
     ]},
-  { key:'multi-dialing-blocker', name:'多拨封禁', defOn:false,
+  { key:'multi-dialing-blocker', name:'多拨封禁', group:'optional', defOn:false,
     desc:'检测同一子网内多个 IP 同时连接同一种子（多拨/代理池行为）。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
@@ -623,7 +637,7 @@ const RULE_MODULES = [
       {k:'keep-hunting', t:'toggle', label:'持续追踪(子网一旦封禁持续监控)'},
       {k:'keep-hunting-time', t:'num', label:'持续追踪时长(秒，默认 2592000)', step:'1'},
     ]},
-  { key:'idle-connection-dos-protection', name:'空闲连接 DoS 防护', defOn:false,
+  { key:'idle-connection-dos-protection', name:'空闲连接 DoS 防护', group:'optional', defOn:false,
     desc:'检测长时间保持连接但下载速度极低的 peer，防止资源耗尽攻击。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
@@ -633,14 +647,14 @@ const RULE_MODULES = [
       {k:'reset-on-status-change', t:'toggle', label:'状态变化时重置计时器'},
       {k:'protect-mode', t:'num', label:'保护模式(0=禁用 1=轻度 2=严格)', step:'1'},
     ]},
-  { key:'ptr-blacklist', name:'PTR 反查黑名单', defOn:false,
+  { key:'ptr-blacklist', name:'PTR 反查黑名单', group:'optional', defOn:false,
     desc:'对 peer IP 进行 DNS PTR 反向查询，根据主机名匹配规则封禁（需联网）。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
       {k:'cache-ttl', t:'num', label:'DNS 缓存 TTL(秒，默认 3600)', step:'1'},
       {map:'ptr-rules', t:'lines', label:'PTR 规则(每行 METHOD:content，如 CONTAINS:example.com)'},
     ]},
-  { key:'auto-range-ban', name:'自动段封禁', defOn:false,
+  { key:'auto-range-ban', name:'自动段封禁', group:'optional', defOn:false,
     desc:'当某子网内封禁 IP 数量超阈值时，自动封禁整个 IP 段。',
     fields:[
       {k:'ban-duration', t:'num', label:'封禁时长(分钟，0=全局)', scale:60000},
@@ -657,22 +671,43 @@ function isObjList(map){ return map==='banned-peer-id' || map==='banned-client-n
 
 function renderRuleCards(){
   const mod = profileObj.module || (profileObj.module={});
-  el('ruleCards').innerHTML = RULE_MODULES.map(m=>{
-    const sec = mod[m.key]||{};
-    const on = sec.enabled!==undefined ? !!sec.enabled : m.defOn;
-    const fields = (m.fields||[]).map(f=>{
-      const id='rf_'+m.key+'_'+(f.k||f.map);
-      if(f.t==='toggle') return `<label class="row" style="gap:5px"><input type="checkbox" id="${id}" ${sec[f.k]?'checked':''}> ${f.label}</label>`;
-      if(f.t==='lines'){ const arr=sec[f.map]||[]; const txt=Array.isArray(arr)?arr.map(linesFmt).join('\n'):''; return `<label style="display:block;grid-column:1/3">${f.label}<textarea id="${id}" rows="4">${esc(txt)}</textarea></label>`; }
-      let v=sec[f.k]; if(v!=null&&f.scale) v=v/f.scale;
-      return `<label>${f.label}<input id="${id}" type="number" ${f.step?('step='+f.step):''} value="${v!=null?v:''}"></label>`;
+  const groups = [
+    {id:'core', title:'核心检测', sub:'默认启用，精确、低误伤'},
+    {id:'optional', title:'可选规则', sub:'按需启用，可能扩大封禁面'},
+  ];
+  el('ruleCards').innerHTML = groups.map(g=>{
+    const mods = RULE_MODULES.filter(m=>(m.group||'optional')===g.id);
+    const rows = mods.map(m=>{
+      const sec = mod[m.key]||{};
+      const on = sec.enabled!==undefined ? !!sec.enabled : m.defOn;
+      const fields = (m.fields||[]).map(f=>{
+        const id='rf_'+m.key+'_'+(f.k||f.map);
+        if(f.t==='toggle') return `<label class="row" style="gap:5px"><input type="checkbox" id="${id}" ${sec[f.k]?'checked':''}> ${f.label}</label>`;
+        if(f.t==='lines'){ const arr=sec[f.map]||[]; const txt=Array.isArray(arr)?arr.map(linesFmt).join('\n'):''; return `<label style="display:block;grid-column:1/3">${f.label}<textarea id="${id}" rows="4">${esc(txt)}</textarea></label>`; }
+        let v=sec[f.k]; if(v!=null&&f.scale) v=v/f.scale;
+        return `<label>${f.label}<input id="${id}" type="number" ${f.step?('step='+f.step):''} value="${v!=null?v:''}"></label>`;
+      }).join('');
+      return `<div class="rmod ${on?'on':''}" id="rmod_${m.key}">
+        <div class="rmod-head" onclick="toggleMod('${m.key}')">
+          <label class="rmod-switch" onclick="event.stopPropagation()"><input type="checkbox" id="ren_${m.key}" ${on?'checked':''} onchange="el('rmod_${m.key}').classList.toggle('on',this.checked)"></label>
+          <span class="rmod-name">${esc(m.name)}</span>
+          <span class="rmod-desc">${esc(m.desc)}</span>
+          <span class="rmod-chev">▸</span>
+        </div>
+        <div class="rmod-body" id="rmbody_${m.key}" style="display:none">
+          <p class="mut" style="margin:8px 0 10px">${esc(m.desc)}</p>
+          <div class="grid">${fields}</div>
+        </div>
+      </div>`;
     }).join('');
-    return `<div class="card" style="margin-bottom:0;border-top:none;border-radius:0">
-      <div class="row"><h3 style="margin:0">${esc(m.name)}</h3><span class="sp"></span>
-        <label class="row" style="gap:6px"><input type="checkbox" id="ren_${m.key}" ${on?'checked':''}> 启用</label></div>
-      <p class="mut" style="margin:6px 0 10px;font-size:12.5px">${esc(m.desc)}</p>
-      <div class="grid">${fields}</div></div>`;
+    return `<div class="rgroup"><div class="rgh">${esc(g.title)} · <span style="font-weight:400">${esc(g.sub)}</span></div>${rows}</div>`;
   }).join('');
+}
+function toggleMod(key){
+  const body=el('rmbody_'+key), card=el('rmod_'+key);
+  const open = body.style.display==='none';
+  body.style.display = open ? 'block' : 'none';
+  card.classList.toggle('open', open);
 }
 
 async function loadProfile(){
