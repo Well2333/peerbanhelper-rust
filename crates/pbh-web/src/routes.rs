@@ -719,12 +719,11 @@ async fn update_check(State(st): State<WebState>) -> Response {
     }
 }
 
-/// 枚举本机非回环 IPv4 地址（LAN + 公网 IP 查询）。
-async fn netinfo(State(st): State<WebState>) -> Response {
-    let app = st.config.current().app.clone();
+/// 枚举本机非回环、非链路本地 IPv4 地址。unix 用 getifaddrs 取全部网卡；
+/// 其它平台（Windows）用 UDP「连接」默认路由的技巧取主网卡 IP（无需第三方依赖）。
+#[cfg(unix)]
+fn local_ipv4_addrs() -> Vec<String> {
     let mut lan: Vec<String> = Vec::new();
-
-    // 通过 libc::getifaddrs 枚举网卡地址（仅保留非回环、非链路本地 IPv4）。
     unsafe {
         let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
         if libc::getifaddrs(&mut ifap) == 0 {
@@ -748,6 +747,31 @@ async fn netinfo(State(st): State<WebState>) -> Response {
             libc::freeifaddrs(ifap);
         }
     }
+    lan
+}
+
+#[cfg(not(unix))]
+fn local_ipv4_addrs() -> Vec<String> {
+    // UDP socket 不真正发包，仅让内核按默认路由选定本机源地址。
+    let primary = std::net::UdpSocket::bind("0.0.0.0:0")
+        .and_then(|s| {
+            s.connect("8.8.8.8:80")?;
+            s.local_addr()
+        })
+        .ok()
+        .and_then(|a| match a.ip() {
+            std::net::IpAddr::V4(v4) if !v4.is_loopback() && !v4.is_link_local() => {
+                Some(v4.to_string())
+            }
+            _ => None,
+        });
+    primary.into_iter().collect()
+}
+
+/// 枚举本机非回环 IPv4 地址（LAN + 公网 IP 查询）。
+async fn netinfo(State(st): State<WebState>) -> Response {
+    let app = st.config.current().app.clone();
+    let lan = local_ipv4_addrs();
 
     let client = pbh_net::build_client(
         &app.network.proxy,
