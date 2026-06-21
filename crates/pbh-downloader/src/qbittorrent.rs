@@ -69,7 +69,7 @@ impl QBittorrentClient {
         let status = resp.status();
         let body = resp.text().await?;
         if !status.is_success() {
-            return Err(DownloaderError::Api(format!("{path} → {status}: {body}")));
+            return Err(status_error(path, status, &body));
         }
         Ok(body)
     }
@@ -79,7 +79,7 @@ impl QBittorrentClient {
         let status = resp.status();
         let body = resp.text().await?;
         if !status.is_success() {
-            return Err(DownloaderError::Api(format!("{path} → {status}: {body}")));
+            return Err(status_error(path, status, &body));
         }
         Ok(body)
     }
@@ -289,6 +289,16 @@ fn non_empty(s: String) -> Option<String> {
     }
 }
 
+/// 把非 2xx 响应映射为错误：401/403 → `Auth`（重试无益，应暂停），其余 → `Api`。
+fn status_error(path: &str, status: reqwest::StatusCode, body: &str) -> DownloaderError {
+    let msg = format!("{path} → {status}: {body}");
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        DownloaderError::Auth(msg)
+    } else {
+        DownloaderError::Api(msg)
+    }
+}
+
 /// 宽松解析版本（去前缀 `v`，补足到 x.y.z）。
 fn parse_version(s: &str) -> Option<semver::Version> {
     let s = s.trim().trim_start_matches('v').trim();
@@ -414,5 +424,16 @@ mod tests {
         // 缺 completed → None（→ completed_size=-1）。
         let t2: QbTorrent = serde_json::from_str(r#"{"hash":"d","total_size":50}"#).unwrap();
         assert_eq!(t2.completed, None);
+    }
+
+    #[test]
+    fn status_error_classifies_auth() {
+        use reqwest::StatusCode;
+        // 401/403 → Auth（应暂停重试）。
+        assert!(status_error("/auth/login", StatusCode::FORBIDDEN, "banned").is_auth());
+        assert!(status_error("/auth/login", StatusCode::UNAUTHORIZED, "no").is_auth());
+        // 其它（5xx/4xx 非鉴权）→ Api（可重试）。
+        assert!(!status_error("/x", StatusCode::INTERNAL_SERVER_ERROR, "oops").is_auth());
+        assert!(!status_error("/x", StatusCode::NOT_FOUND, "nf").is_auth());
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! 一轮 wave：移除到期封禁 → 对每个下载器(登录→拉 torrents→拉 peers→逐 peer 跑模块→命中即封) → 下发封禁列表。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -62,8 +62,9 @@ pub struct BanManager {
     stats: Stats,
     /// 每个下载器上轮登录是否成功（id → ok）。
     login_status: RwLock<HashMap<String, bool>>,
-    /// 登录退避/暂停闸门（id → 状态）：凭证错误即暂停，瞬时错误退避，避免硬刷登录触发 IP 封禁。
-    login_gate: RwLock<HashMap<String, LoginGate>>,
+    /// 因鉴权失败（凭证错误 / 被封禁）已暂停自动重试的下载器 id 集合。
+    /// 网络错误不入此集合（仍每轮重试）；改配置（upsert）后清除以立即重试。
+    login_suspended: RwLock<HashSet<String>>,
     /// 是否把当前 swarm 记入 `tracked_swarm`（供 BTN 上行 submit_swarm）。
     track_swarm: bool,
     /// GeoIP 句柄（封禁历史回填 peer_geoip；空时 query 返回 None，优雅降级）。
@@ -80,33 +81,6 @@ impl Drop for WaveGuard<'_> {
     }
 }
 
-/// 下载器登录退避/暂停状态：避免凭证错误时每轮硬刷 `/auth/login` 触发下载器封禁本机 IP。
-#[derive(Default, Clone)]
-struct LoginGate {
-    /// 连续失败次数（仅瞬时错误计数）。
-    fails: u32,
-    /// 下次允许尝试登录的时刻（epoch ms）；`i64::MAX` 表示凭证被拒已暂停，需改配置才恢复。
-    next_ms: i64,
-}
-
-/// 登录瞬时失败的退避时长（ms），随连续失败递增，封顶 15 分钟。
-fn login_backoff_ms(fails: u32) -> i64 {
-    match fails {
-        0 | 1 => 30_000,
-        2 => 120_000,
-        3 => 300_000,
-        4 => 600_000,
-        _ => 900_000,
-    }
-}
-
-/// 当前是否到了可再次尝试登录的时刻（无闸门记录即可尝试）。
-fn login_gate_ready(gate: Option<&LoginGate>, now: i64) -> bool {
-    match gate {
-        Some(g) => now >= g.next_ms,
-        None => true,
-    }
-}
 
 impl BanManager {
     #[allow(clippy::too_many_arguments)]
@@ -134,7 +108,7 @@ impl BanManager {
             running: AtomicBool::new(false),
             stats: Stats::default(),
             login_status: RwLock::new(HashMap::new()),
-            login_gate: RwLock::new(HashMap::new()),
+            login_suspended: RwLock::new(HashSet::new()),
             track_swarm,
             geoip,
             last_snapshot_at: AtomicU64::new(now_ms() as u64),
@@ -180,9 +154,9 @@ impl BanManager {
         self.login_status.read().unwrap().clone()
     }
 
-    /// 清除某下载器的登录退避/暂停闸门（配置变更后调用，使其下一轮立即重试）。
+    /// 清除某下载器的登录暂停状态（配置变更后调用，使其下一轮立即重试）。
     pub fn clear_login_gate(&self, id: &str) {
-        self.login_gate.write().unwrap().remove(id);
+        self.login_suspended.write().unwrap().remove(id);
         self.login_status.write().unwrap().remove(id);
     }
 
@@ -284,60 +258,41 @@ impl BanManager {
                 continue;
             }
             let id = d.id().to_string();
-            // 登录闸门：凭证错误已暂停、或仍在失败退避窗口内 → 跳过，避免硬刷 /auth/login 触发封 IP。
-            if !login_gate_ready(self.login_gate.read().unwrap().get(&id), now) {
+            // 因鉴权失败已暂停的下载器 → 跳过（不再硬刷 /auth/login，避免持续触发封 IP）。
+            if self.login_suspended.read().unwrap().contains(&id) {
                 continue;
             }
             match d.login().await {
                 Ok(o) if o.success => {
                     self.login_status.write().unwrap().insert(id.clone(), true);
-                    self.login_gate.write().unwrap().remove(&id); // 恢复正常，清退避
                 }
                 Ok(o) => {
                     // 凭证/配置被拒（密码错误、EE 未开 shadow 等）：重试无益，暂停直到改配置。
                     self.login_status.write().unwrap().insert(id.clone(), false);
-                    let already = {
-                        let mut gate = self.login_gate.write().unwrap();
-                        let was = gate.get(&id).map(|g| g.next_ms == i64::MAX).unwrap_or(false);
-                        gate.insert(
-                            id.clone(),
-                            LoginGate {
-                                fails: 0,
-                                next_ms: i64::MAX,
-                            },
-                        );
-                        was
-                    };
-                    if !already {
+                    if self.login_suspended.write().unwrap().insert(id.clone()) {
                         tracing::warn!(
                             downloader = d.name(),
-                            "登录被拒，已暂停自动重试（避免触发下载器封禁本机 IP）；请在「下载器」中修正凭证后保存。原因: {}",
+                            "登录被拒，已暂停自动重试；请在「下载器」中修正配置后保存。原因: {}",
                             o.message
                         );
                     }
                     continue;
                 }
-                Err(e) => {
-                    // 网络错误 / 已被下载器封禁（403）等瞬时故障：退避后再试。
+                Err(e) if e.is_auth() => {
+                    // 鉴权失败（401/403，含被下载器封禁）：重试无益，暂停直到改配置。
                     self.login_status.write().unwrap().insert(id.clone(), false);
-                    let (fails, delay) = {
-                        let mut gate = self.login_gate.write().unwrap();
-                        let fails = gate.get(&id).map(|g| g.fails).unwrap_or(0).saturating_add(1);
-                        let delay = login_backoff_ms(fails);
-                        gate.insert(
-                            id.clone(),
-                            LoginGate {
-                                fails,
-                                next_ms: now + delay,
-                            },
+                    if self.login_suspended.write().unwrap().insert(id.clone()) {
+                        tracing::warn!(
+                            downloader = d.name(),
+                            "登录鉴权失败，已暂停自动重试（避免持续触发下载器封禁本机 IP）；请确认凭证、等待下载器解封后在「下载器」保存以重试。原因: {e}"
                         );
-                        (fails, delay)
-                    };
-                    tracing::warn!(
-                        downloader = d.name(),
-                        "登录错误（第 {fails} 次），{}s 后重试: {e}",
-                        delay / 1000
-                    );
+                    }
+                    continue;
+                }
+                Err(e) => {
+                    // 网络等瞬时错误：维持旧策略，下一轮继续重试（不暂停、不冷却）。
+                    self.login_status.write().unwrap().insert(id.clone(), false);
+                    tracing::warn!(downloader = d.name(), "登录错误: {e}");
                     continue;
                 }
             }
@@ -555,36 +510,3 @@ fn gen_id() -> String {
     format!("{t:x}{seq:x}")
 }
 
-#[cfg(test)]
-mod login_gate_tests {
-    use super::*;
-
-    #[test]
-    fn backoff_escalates_and_caps() {
-        assert_eq!(login_backoff_ms(1), 30_000);
-        assert_eq!(login_backoff_ms(2), 120_000);
-        assert_eq!(login_backoff_ms(3), 300_000);
-        assert_eq!(login_backoff_ms(4), 600_000);
-        assert_eq!(login_backoff_ms(5), 900_000);
-        assert_eq!(login_backoff_ms(99), 900_000); // 封顶
-    }
-
-    #[test]
-    fn gate_ready_logic() {
-        // 无记录 → 可尝试。
-        assert!(login_gate_ready(None, 1000));
-        // 退避窗口内 → 不可尝试；到点 → 可。
-        let g = LoginGate {
-            fails: 1,
-            next_ms: 2000,
-        };
-        assert!(!login_gate_ready(Some(&g), 1999));
-        assert!(login_gate_ready(Some(&g), 2000));
-        // 凭证暂停(next_ms = i64::MAX)→ 永不自动重试。
-        let suspended = LoginGate {
-            fails: 0,
-            next_ms: i64::MAX,
-        };
-        assert!(!login_gate_ready(Some(&suspended), i64::MAX - 1));
-    }
-}

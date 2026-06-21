@@ -24,8 +24,18 @@ pub enum DownloaderError {
     Http(#[from] reqwest::Error),
     #[error("下载器 API 错误: {0}")]
     Api(String),
+    /// 鉴权失败（401/403，含「认证失败次数过多已封禁」）。重试无益，应暂停。
+    #[error("下载器鉴权失败: {0}")]
+    Auth(String),
     #[error("配置错误: {0}")]
     Config(String),
+}
+
+impl DownloaderError {
+    /// 是否为鉴权类错误（凭证错误 / 被下载器封禁）——重试无益，应暂停而非重试。
+    pub fn is_auth(&self) -> bool {
+        matches!(self, DownloaderError::Auth(_))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, DownloaderError>;
