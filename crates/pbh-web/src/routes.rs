@@ -768,7 +768,47 @@ fn local_ipv4_addrs() -> Vec<String> {
     primary.into_iter().collect()
 }
 
-/// 逐个查询公网 IP 服务，返回第一个解析成功且地址族匹配的 IP。
+/// 从任意文本中提取第一个合法 IPv4（容忍服务返回 JSON/JSONP/HTML 包裹的 IP）。
+fn extract_ipv4(body: &str) -> Option<String> {
+    let b = body.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i].is_ascii_digit() {
+            let start = i;
+            while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
+                i += 1;
+            }
+            if let Ok(ip) = body[start..i].parse::<std::net::Ipv4Addr>() {
+                return Some(ip.to_string());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// 从任意文本中提取第一个合法 IPv6。
+fn extract_ipv6(body: &str) -> Option<String> {
+    let b = body.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i].is_ascii_hexdigit() || b[i] == b':' {
+            let start = i;
+            while i < b.len() && (b[i].is_ascii_hexdigit() || b[i] == b':') {
+                i += 1;
+            }
+            if let Ok(ip) = body[start..i].parse::<std::net::Ipv6Addr>() {
+                return Some(ip.to_string());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// 逐个查询公网 IP 服务，返回第一个成功提取到的对应地址族 IP（从响应正文中提取，容忍包裹格式）。
 async fn fetch_public_ip(client: &reqwest::Client, urls: &[&str], want_v6: bool) -> Option<String> {
     for url in urls {
         let Ok(resp) = client.get(*url).send().await else {
@@ -778,10 +818,13 @@ async fn fetch_public_ip(client: &reqwest::Client, urls: &[&str], want_v6: bool)
             continue;
         }
         let Ok(body) = resp.text().await else { continue };
-        if let Ok(ip) = body.trim().parse::<std::net::IpAddr>() {
-            if ip.is_ipv6() == want_v6 {
-                return Some(ip.to_string());
-            }
+        let found = if want_v6 {
+            extract_ipv6(&body)
+        } else {
+            extract_ipv4(&body)
+        };
+        if found.is_some() {
+            return found;
         }
     }
     None
@@ -789,17 +832,19 @@ async fn fetch_public_ip(client: &reqwest::Client, urls: &[&str], want_v6: bool)
 
 /// 本机网络地址：局域网 IPv4 + 公网 IPv4/IPv6。
 /// 公网查询走**直连**（下载器连接本就不走代理；这里要的是对外可见的出口 IP，用于外部下载器白名单），
-/// 并按多个镜像回退（含对中国大陆友好的 ipw.cn）。
+/// 多服务回退、对中国大陆友好（域内服务优先，并从正文中提取 IP 而非要求整体为 IP）。
 async fn netinfo(State(_st): State<WebState>) -> Response {
     let lan = local_ipv4_addrs();
-    let client = pbh_net::build_client("", std::time::Duration::from_secs(5));
+    let client = pbh_net::build_client("", std::time::Duration::from_secs(6));
     let public = fetch_public_ip(
         &client,
         &[
+            // 域内可达、稳定优先；末位放国际服务兜底。
+            "https://ip.3322.net",
             "https://4.ipw.cn",
+            "https://myip.ipip.net",
+            "https://www.taobao.com/help/getip.php",
             "https://api.ipify.org",
-            "https://ipinfo.io/ip",
-            "https://ifconfig.me/ip",
         ],
         false,
     )
@@ -856,5 +901,45 @@ mod update_tests {
         // 不等长版本段
         assert!(version_newer("1.0.0", "1.0.0.1"));
         assert!(!version_newer("1.0", "1.0.0"));
+    }
+}
+
+#[cfg(test)]
+mod netinfo_tests {
+    use super::{extract_ipv4, extract_ipv6};
+
+    #[test]
+    fn ipv4_from_various_formats() {
+        // 纯文本
+        assert_eq!(extract_ipv4("1.2.3.4").as_deref(), Some("1.2.3.4"));
+        assert_eq!(extract_ipv4("  203.0.113.9\n").as_deref(), Some("203.0.113.9"));
+        // ipip.net 文本包裹
+        assert_eq!(
+            extract_ipv4("当前 IP：203.0.113.9 来自：xx").as_deref(),
+            Some("203.0.113.9")
+        );
+        // taobao JSONP
+        assert_eq!(
+            extract_ipv4("ipCallback({ip:\"203.0.113.9\",code:0})").as_deref(),
+            Some("203.0.113.9")
+        );
+        // ipinfo JSON
+        assert_eq!(
+            extract_ipv4("{\"ip\":\"198.51.100.7\"}").as_deref(),
+            Some("198.51.100.7")
+        );
+        // 无 IP
+        assert!(extract_ipv4("no address here").is_none());
+        // 超范围（256 非法）整段解析失败，无其它有效 IP → None
+        assert!(extract_ipv4("256.1.1.1 only").is_none());
+    }
+
+    #[test]
+    fn ipv6_extraction() {
+        assert_eq!(
+            extract_ipv6("Your IPv6 is 2001:db8::1 today").as_deref(),
+            Some("2001:db8::1")
+        );
+        assert!(extract_ipv6("1.2.3.4 no v6").is_none());
     }
 }
