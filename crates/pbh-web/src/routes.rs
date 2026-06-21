@@ -768,26 +768,45 @@ fn local_ipv4_addrs() -> Vec<String> {
     primary.into_iter().collect()
 }
 
-/// 枚举本机非回环 IPv4 地址（LAN + 公网 IP 查询）。
-async fn netinfo(State(st): State<WebState>) -> Response {
-    let app = st.config.current().app.clone();
+/// 逐个查询公网 IP 服务，返回第一个解析成功且地址族匹配的 IP。
+async fn fetch_public_ip(client: &reqwest::Client, urls: &[&str], want_v6: bool) -> Option<String> {
+    for url in urls {
+        let Ok(resp) = client.get(*url).send().await else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(body) = resp.text().await else { continue };
+        if let Ok(ip) = body.trim().parse::<std::net::IpAddr>() {
+            if ip.is_ipv6() == want_v6 {
+                return Some(ip.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 本机网络地址：局域网 IPv4 + 公网 IPv4/IPv6。
+/// 公网查询走**直连**（下载器连接本就不走代理；这里要的是对外可见的出口 IP，用于外部下载器白名单），
+/// 并按多个镜像回退（含对中国大陆友好的 ipw.cn）。
+async fn netinfo(State(_st): State<WebState>) -> Response {
     let lan = local_ipv4_addrs();
+    let client = pbh_net::build_client("", std::time::Duration::from_secs(5));
+    let public = fetch_public_ip(
+        &client,
+        &[
+            "https://4.ipw.cn",
+            "https://api.ipify.org",
+            "https://ipinfo.io/ip",
+            "https://ifconfig.me/ip",
+        ],
+        false,
+    )
+    .await;
+    let public6 = fetch_public_ip(&client, &["https://6.ipw.cn", "https://api6.ipify.org"], true).await;
 
-    let client = pbh_net::build_client(
-        &app.network.proxy,
-        std::time::Duration::from_secs(8),
-    );
-    let public: Option<String> = match client.get("https://api.ipify.org").send().await {
-        Ok(r) if r.status().is_success() => r
-            .text()
-            .await
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| s.parse::<std::net::IpAddr>().is_ok()),
-        _ => None,
-    };
-
-    ApiResp::ok(json!({ "lan": lan, "public": public })).into_response()
+    ApiResp::ok(json!({ "lan": lan, "public": public, "public6": public6 })).into_response()
 }
 
 fn gen_id() -> String {

@@ -407,8 +407,11 @@ async function loadNetinfo(){
         <button class="ghost sm" onclick="copyText('${esc(ip)}')">复制 IP</button>
         ${sn?`<button class="ghost sm" onclick="copyText('${esc(sn)}')">复制网段 ${esc(sn)}</button>`:''}</div>`);
     });
-    if(d.public) rows.push(`<div class="row" style="gap:8px;margin:4px 0"><span class="pill">公网</span><b>${esc(d.public)}</b>
+    if(d.public) rows.push(`<div class="row" style="gap:8px;margin:4px 0"><span class="pill">公网 IPv4</span><b>${esc(d.public)}</b>
       <button class="ghost sm" onclick="copyText('${esc(d.public)}')">复制</button></div>`);
+    if(d.public6) rows.push(`<div class="row" style="gap:8px;margin:4px 0"><span class="pill">公网 IPv6</span><b>${esc(d.public6)}</b>
+      <button class="ghost sm" onclick="copyText('${esc(d.public6)}')">复制</button></div>`);
+    if(!d.public && !d.public6) rows.push('<div class="mut" style="margin:4px 0">公网 IP 获取失败(网络不通或被拦截);局域网网段仍可用于白名单。</div>');
     box.innerHTML = rows.length? rows.join('') : '<span class="mut">未获取到地址</span>';
   }catch(e){ el('netinfo').innerHTML='<span class="bad">加载失败</span>'; }
 }
