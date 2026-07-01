@@ -4,6 +4,10 @@
 //! 文件缺失或(auto-update && 超 45 天)才重下。下载经 pbh-net 代理客户端。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicU64;
+
+/// 临时下载文件的进程内递增序号,与 pid 一起保证并发写入的 .tmp 路径唯一。
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// 45 天(上游 updateInterval = 3888000000 ms)。
 pub const UPDATE_INTERVAL_MS: u128 = 3_888_000_000;
@@ -90,7 +94,11 @@ pub async fn download_one(
                         if let Some(p) = dest.parent() {
                             let _ = std::fs::create_dir_all(p);
                         }
-                        let tmp = dir.join(format!("{file}.tmp"));
+                        // 临时文件名带 pid + 递增序号,确保并发下载(后台自动循环与手动端点)
+                        // 不共享同一 .tmp 路径 —— 各写各的完整文件,再各自原子 rename 到 dest,
+                        // dest 永远是完整文件,杜绝截断/写竞争损坏。
+                        let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let tmp = dir.join(format!("{file}.{}.{seq}.tmp", std::process::id()));
                         if std::fs::write(&tmp, &bytes).is_err() {
                             tracing::warn!("GeoIP {file} 写临时文件失败({mirror})");
                             let _ = std::fs::remove_file(&tmp);
@@ -130,17 +138,19 @@ pub async fn download_one(
 }
 
 /// 确保全部库就绪:对每个需要的文件按需下载。返回是否有任一成功下载(用于决定是否热替换)。
+/// `force=true` 时无视存在性与 45 天门槛,强制重下每个库(手动"更新"按钮走此路径)。
 pub async fn ensure_databases(
     client: &reqwest::Client,
     dir: &Path,
     auto_update: bool,
+    force: bool,
     account_id: &str,
     license_key: &str,
 ) -> bool {
     let mut any = false;
     for file in FILES {
         let path = dir.join(file);
-        if needs_download(&path, auto_update)
+        if (force || needs_download(&path, auto_update))
             && download_one(client, dir, file, account_id, license_key).await
         {
             any = true;

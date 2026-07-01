@@ -161,6 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &client,
                     &geoip_dir,
                     app_cfg.ip_database.auto_update,
+                    false, // 后台循环按门槛下载,不强制
                     &app_cfg.ip_database.account_id,
                     &app_cfg.ip_database.license_key,
                 )

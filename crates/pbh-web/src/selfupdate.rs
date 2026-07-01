@@ -90,6 +90,28 @@ pub async fn download_and_replace(
     Ok(exe)
 }
 
+/// 延迟后重启进程以加载新二进制。后台执行，不阻塞调用方（让 HTTP 响应先返回）。
+pub fn spawn_restart(exe: std::path::PathBuf) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        tracing::warn!("自更新完成，正在重启以加载新版本…");
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            // exec 原地替换进程映像；仅在失败时返回。
+            let err = std::process::Command::new(&exe).args(&args).exec();
+            tracing::error!("重启 exec 失败: {err}；请手动重启程序。");
+            std::process::exit(1);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = std::process::Command::new(&exe).args(&args).spawn();
+            std::process::exit(0);
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,26 +195,4 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("过小"), "应因过小被拒: {err}");
     }
-}
-
-/// 延迟后重启进程以加载新二进制。后台执行，不阻塞调用方（让 HTTP 响应先返回）。
-pub fn spawn_restart(exe: std::path::PathBuf) {
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(1200)).await;
-        tracing::warn!("自更新完成，正在重启以加载新版本…");
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            // exec 原地替换进程映像；仅在失败时返回。
-            let err = std::process::Command::new(&exe).args(&args).exec();
-            tracing::error!("重启 exec 失败: {err}；请手动重启程序。");
-            std::process::exit(1);
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = std::process::Command::new(&exe).args(&args).spawn();
-            std::process::exit(0);
-        }
-    });
 }

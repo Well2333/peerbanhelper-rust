@@ -120,6 +120,20 @@ async fn index() -> Html<&'static str> {
 
 // ---------------- 鉴权 ----------------
 
+/// 常数时间比较两个字符串,避免 token 校验的计时侧信道(不因首个不同字节提前返回)。
+/// 长度不同直接判否(仅泄漏长度,可接受)。
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 async fn auth(State(st): State<WebState>, req: Request, next: Next) -> Response {
     let token = st.config.current().app.server.token.clone();
     let ok = req
@@ -127,7 +141,7 @@ async fn auth(State(st): State<WebState>, req: Request, next: Next) -> Response 
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|t| !token.is_empty() && t == token)
+        .map(|t| !token.is_empty() && ct_eq(t, &token))
         .unwrap_or(false);
     if ok {
         next.run(req).await
@@ -157,7 +171,7 @@ struct LoginBody {
 
 async fn login(State(st): State<WebState>, Json(b): Json<LoginBody>) -> Response {
     let token = st.config.current().app.server.token.clone();
-    if !token.is_empty() && b.token == token {
+    if !token.is_empty() && ct_eq(&b.token, &token) {
         ApiResp::ok_empty().into_response()
     } else {
         unauthorized()
@@ -662,9 +676,11 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
     let app = st.config.current().app.clone();
     let dir = st.paths.data_dir().join("geoip");
     let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(60));
+    // 手动点击"更新"= 强制刷新:force=true 无视 45 天/存在性门槛,始终重下最新库。
     let changed = pbh_geoip::download::ensure_databases(
         &client,
         &dir,
+        true,
         true,
         &app.ip_database.account_id,
         &app.ip_database.license_key,
