@@ -36,6 +36,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/sub/logs", get(sub_rule_logs))
         .route("/api/logs", get(get_logs))
         .route("/api/geoip/update", post(geoip_update))
+        .route("/api/btn/status", get(btn_status))
         .route("/api/update/check", get(update_check))
         .route("/api/update/apply", post(apply_update))
         .route("/api/netinfo", get(netinfo))
@@ -708,6 +709,33 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
         }
     }
     ApiResp::ok(json!({ "changed": changed, "loaded": st.geoip.is_loaded() })).into_response()
+}
+
+/// BTN 连接/运行状态：供设置页状态指示器展示能否与 BTN 建立连接、拉到多少数据等。
+async fn btn_status(State(st): State<WebState>) -> Response {
+    let enabled = st.config.current().app.btn.enabled;
+    match st.btn.current_state() {
+        // 未启用/未运行：调度器未起，无共享状态。
+        None => ApiResp::ok(json!({ "enabled": enabled, "running": false })).into_response(),
+        Some(state) => {
+            let s = state.read().status.clone();
+            ApiResp::ok(json!({
+                "enabled": true,
+                "running": true,
+                "config_ok": s.config_ok,
+                "config_at_ms": s.config_at_ms,
+                "ability_count": s.ability_count,
+                "last_error": s.last_error,
+                "last_error_at_ms": s.last_error_at_ms,
+                "heartbeat_ip": s.heartbeat_ip,
+                "heartbeat_at_ms": s.heartbeat_at_ms,
+                "denylist_entries": s.denylist_entries,
+                "allowlist_entries": s.allowlist_entries,
+                "rule_groups": s.rule_groups,
+            }))
+            .into_response()
+        }
+    }
 }
 
 /// latest 是否比 current 新(语义化:major.minor.patch,容忍前导 v 与多余段)。

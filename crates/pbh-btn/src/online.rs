@@ -15,6 +15,29 @@ use pbh_rules::{IpMatcher, MatchOutcome, Matcher, RuleFeatureModule, RuleSet, St
 
 use crate::model::BtnRuleset;
 
+/// BTN 连接 / 运行健康状态（供 Web 状态指示器展示，不参与匹配逻辑）。
+#[derive(Default, Clone)]
+pub struct BtnStatus {
+    /// 最近一次拉取 config 是否成功。
+    pub config_ok: bool,
+    /// 最近一次拉取 config 的时刻（ms，0=从未尝试）。
+    pub config_at_ms: i64,
+    /// config 返回的 ability 数量。
+    pub ability_count: usize,
+    /// 最近一次错误原因（config / 规则 / 名单 / 心跳 / 上报 任一失败）。
+    pub last_error: Option<String>,
+    /// 最近一次错误时刻（ms）。
+    pub last_error_at_ms: i64,
+    /// 最近一次心跳拿到的外网 IP。
+    pub heartbeat_ip: Option<String>,
+    /// 最近一次心跳时刻（ms）。
+    pub heartbeat_at_ms: i64,
+    /// 已加载的下行数据量（黑/白名单条目、规则分组数）。
+    pub denylist_entries: usize,
+    pub allowlist_entries: usize,
+    pub rule_groups: usize,
+}
+
 /// BTN 下行威胁情报编译后的匹配状态。
 #[derive(Default)]
 pub struct BtnState {
@@ -27,6 +50,8 @@ pub struct BtnState {
     pub ip_rules: IpMatcher<String>,
     /// 端口 → 分类名。
     pub port_rules: HashMap<u16, String>,
+    /// 连接/运行健康状态。
+    pub status: BtnStatus,
 }
 
 /// BTN 在线规则模块。

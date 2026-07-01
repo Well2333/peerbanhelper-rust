@@ -26,7 +26,9 @@ use tokio::task::AbortHandle;
 pub use client::{gzip, BtnClient};
 pub use hash::hashed_identifier;
 pub use model::{BtnBan, BtnConfigResponse, BtnRuleset, BtnSwarm, SubmitBansBody, SubmitSwarmBody};
-pub use online::{apply_allowlist, apply_denylist, apply_ruleset, BtnNetworkOnline, BtnState};
+pub use online::{
+    apply_allowlist, apply_denylist, apply_ruleset, BtnNetworkOnline, BtnState, BtnStatus,
+};
 pub use pow::{solve as pow_solve, PowChallenge};
 
 /// 共享 BTN 威胁情报状态（调度器写、模块读）。
@@ -77,10 +79,24 @@ pub fn spawn(cfg: BtnRuntimeConfig, db: Db, state: Arc<RwLock<BtnState>>) -> Abo
                             "modern"
                         }
                     );
+                    {
+                        let mut g = state.write();
+                        g.status.config_ok = true;
+                        g.status.config_at_ms = now_ms();
+                        g.status.ability_count = config.ability.len();
+                        g.status.last_error = None;
+                    }
                     run_abilities(&client, &config, &cfg, &db, &state).await;
                 }
                 Err(e) => {
                     tracing::warn!("BTN config 拉取失败: {e};600s 后重试");
+                    {
+                        let mut g = state.write();
+                        g.status.config_ok = false;
+                        g.status.config_at_ms = now_ms();
+                        g.status.last_error = Some(format!("config 拉取失败: {e}"));
+                        g.status.last_error_at_ms = now_ms();
+                    }
                     tokio::time::sleep(Duration::from_secs(600)).await;
                 }
             }
@@ -120,29 +136,47 @@ async fn run_abilities(
                         Ok(Some(rs)) => {
                             rules_rev = rs.version.clone().unwrap_or_default();
                             apply_ruleset(state, &rs);
+                            let groups = {
+                                let g = state.read();
+                                g.peer_id_rules.len() + g.client_name_rules.len()
+                            };
+                            state.write().status.rule_groups = groups;
                             tracing::info!("BTN 规则集已更新 (rev={rules_rev})");
                         }
                         Ok(None) => {}
-                        Err(e) => tracing::warn!("BTN 规则拉取失败: {e}"),
+                        Err(e) => {
+                            tracing::warn!("BTN 规则拉取失败: {e}");
+                            record_error(state, format!("规则拉取失败: {e}"));
+                        }
                     }
                 }
                 "ip_denylist" => match client.fetch_ip_list(endpoint, &deny_rev).await {
                     Ok(Some((text, ver))) => {
                         deny_rev = ver;
                         apply_denylist(state, &text);
+                        let n = state.read().denylist.len();
+                        state.write().status.denylist_entries = n;
                         tracing::info!("BTN 黑名单已更新 ({} 字节)", text.len());
                     }
                     Ok(None) => {}
-                    Err(e) => tracing::warn!("BTN 黑名单拉取失败: {e}"),
+                    Err(e) => {
+                        tracing::warn!("BTN 黑名单拉取失败: {e}");
+                        record_error(state, format!("黑名单拉取失败: {e}"));
+                    }
                 },
                 "ip_allowlist" => match client.fetch_ip_list(endpoint, &allow_rev).await {
                     Ok(Some((text, ver))) => {
                         allow_rev = ver;
                         apply_allowlist(state, &text);
+                        let n = state.read().allowlist.len();
+                        state.write().status.allowlist_entries = n;
                         tracing::info!("BTN 白名单已更新 ({} 字节)", text.len());
                     }
                     Ok(None) => {}
-                    Err(e) => tracing::warn!("BTN 白名单拉取失败: {e}"),
+                    Err(e) => {
+                        tracing::warn!("BTN 白名单拉取失败: {e}");
+                        record_error(state, format!("白名单拉取失败: {e}"));
+                    }
                 },
                 "submit_bans" if cfg.submit => {
                     submit_bans(client, endpoint, db).await;
@@ -151,9 +185,18 @@ async fn run_abilities(
                     submit_swarm(client, endpoint, db).await;
                 }
                 "heartbeat" => match client.heartbeat(endpoint).await {
-                    Ok(Some(ip)) => tracing::info!("BTN 心跳:外网 IP {ip}"),
-                    Ok(None) => {}
-                    Err(e) => tracing::warn!("BTN 心跳失败: {e}"),
+                    Ok(ip) => {
+                        let mut g = state.write();
+                        g.status.heartbeat_at_ms = now_ms();
+                        if let Some(ip) = ip {
+                            tracing::info!("BTN 心跳:外网 IP {ip}");
+                            g.status.heartbeat_ip = Some(ip);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("BTN 心跳失败: {e}");
+                        record_error(state, format!("心跳失败: {e}"));
+                    }
                 },
                 _ => {}
             }
@@ -303,4 +346,11 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// 记录一次 ability 级错误到共享状态（供 Web 状态指示器展示）。
+fn record_error(state: &Arc<RwLock<BtnState>>, msg: String) {
+    let mut g = state.write();
+    g.status.last_error = Some(msg);
+    g.status.last_error_at_ms = now_ms();
 }

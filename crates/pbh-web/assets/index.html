@@ -83,10 +83,15 @@
   input,select,textarea { padding:8px 11px; border-radius:8px; border:1px solid var(--bd); background:var(--inp); color:var(--fg); outline:none; }
   input:focus,select:focus,textarea:focus { border-color:var(--acc); }
   textarea { width:100%; font:12.5px/1.6 ui-monospace,"SF Mono",Menlo,monospace; resize:vertical; }
-  button { background:var(--acc); border:1px solid var(--acc); cursor:pointer; color:#fff; padding:8px 15px; border-radius:8px; font-weight:550; transition:.15s; }
-  button:hover { background:var(--acc-d); border-color:var(--acc-d); }
-  button.ghost { background:transparent; border:1px solid var(--bd); color:var(--fg); }
-  button.ghost:hover { border-color:var(--acc); color:var(--acc); background:transparent; }
+  button, a.btn { display:inline-block; background:var(--acc); border:1px solid var(--acc); cursor:pointer; color:#fff; padding:8px 15px; border-radius:8px; font-weight:550; transition:.15s; }
+  button:hover, a.btn:hover { background:var(--acc-d); border-color:var(--acc-d); }
+  button.ghost, a.btn.ghost { background:transparent; border:1px solid var(--bd); color:var(--fg); }
+  button.ghost:hover, a.btn.ghost:hover { border-color:var(--acc); color:var(--acc); background:transparent; }
+  @keyframes flashcard { 0%,100%{ box-shadow:0 0 0 0 transparent } 30%{ box-shadow:0 0 0 3px var(--acc) } }
+  .flash { animation:flashcard 1.5s ease-in-out; }
+  .btnstat { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
+  .btnstat .ledp { width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+  .led-ok{ background:#2ecc71 } .led-bad{ background:var(--bad) } .led-wait{ background:#f1c40f } .led-off{ background:#9aa }
   button.danger { background:var(--bad); border-color:var(--bad); }
   button.danger:hover { filter:brightness(.92); }
   button.sm { padding:5px 11px; font-size:12.5px; }
@@ -146,7 +151,7 @@
     <a href="#settings">设置</a>
     <a href="#logs">实时日志</a>
   </nav>
-  <a id="updBadge" class="pill red hidden" href="#" target="_blank" rel="noopener" style="text-decoration:none">有新版本</a>
+  <a id="updBadge" class="pill red hidden" href="#settings" onclick="gotoUpdate(event)" style="text-decoration:none" title="前往设置页选择自动或手动更新">有新版本</a>
   <span class="hstat" id="hstat">—</span>
   <a class="hbtn" id="ghBtn" href="https://github.com/Well2333/peerbanhelper-rust" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">
     <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -268,6 +273,7 @@
     <div class="card" style="margin-bottom:16px">
       <h3>☁️ BTN 云端威胁情报</h3>
       <p class="mut" style="margin-top:-4px">加入 BTN 共享封禁情报。需在 <a href="https://github.com/PBH-BTN/PeerBanHelper" target="_blank" rel="noopener">BTN</a> 申请 app-id / app-secret。</p>
+      <div class="card" style="padding:9px 12px;margin:4px 0 10px;background:var(--bg)"><span class="btnstat" id="btnStat"><span class="ledp led-off"></span><span class="mut">状态加载中…</span></span></div>
       <label class="row" style="gap:6px;margin-bottom:8px"><input type="checkbox" id="cfg_btn_enabled"> 启用 BTN</label>
       <div class="grid">
         <input id="cfg_btn_appid" placeholder="app-id">
@@ -301,15 +307,16 @@
       <div id="cfgMsg" class="mut" style="margin-top:9px"></div>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card" id="aboutCard" style="margin-top:16px">
       <h3>ℹ️ 关于 / 检查更新</h3>
       <p class="mut" style="margin-top:-4px">当前版本 <b id="aboutVer">…</b> · 仓库 <a href="https://github.com/Well2333/peerbanhelper-rust" target="_blank" rel="noopener">Well2333/peerbanhelper-rust</a></p>
-      <div class="row" style="margin-top:6px">
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:8px">
         <button class="ghost" onclick="manualCheckUpdate()">检查更新</button>
-        <button id="updApplyBtn" class="hidden" onclick="applyUpdate()">下载并自动更新</button>
+        <button id="updApplyBtn" class="hidden" onclick="applyUpdate()">⚡ 自动更新(下载+替换+重启)</button>
+        <a id="updManualLink" class="btn ghost hidden" href="#" target="_blank" rel="noopener" style="text-decoration:none">⬇ 手动下载(前往 Release)</a>
         <span id="updResult" class="mut"></span>
       </div>
-      <p class="mut" style="margin-top:8px;font-size:12px">自动更新会下载对应平台的新版二进制、替换当前程序并自动重启(需对程序文件有写权限)。更新后本页会短暂断连,请稍候刷新。</p>
+      <p class="mut" style="margin-top:8px;font-size:12px"><b>自动更新</b>：下载对应平台新版二进制、替换当前程序并自动重启(需对程序文件有写权限)，更新后本页短暂断连、稍候自动恢复。<b>手动下载</b>：前往 GitHub Release 自行下载替换。</p>
     </div>
   </section>
 
@@ -392,7 +399,7 @@ async function loadAppConfig(){
   el('cfg_ip_account').value=ip.account_id||''; el('cfg_ip_license').value=ip.license_key||''; el('cfg_ip_auto').checked=ip.auto_update!==false;
   el('cfg_proxy').value=n.proxy||'';
   el('aboutVer').textContent=el('verTag').textContent||'…';
-  loadNetinfo();
+  loadNetinfo(); refreshBtnStatus();
 }
 async function saveAppConfig(which){
   const body={};
@@ -401,7 +408,8 @@ async function saveAppConfig(which){
   if(which==='net') body.network={proxy:el('cfg_proxy').value.trim()};
   el('cfgMsg').textContent='保存中…';
   const j=await api('/api/config/app',{method:'PUT',body:JSON.stringify(body)});
-  if(j.ok){ toast('已保存并生效'); el('cfgMsg').innerHTML='<span class="ok">✓ 已保存,'+ (j.data&&j.data.modules!=null?j.data.modules+' 个模块已重建':'已生效') +'</span>'; }
+  if(j.ok){ toast('已保存并生效'); el('cfgMsg').innerHTML='<span class="ok">✓ 已保存,'+ (j.data&&j.data.modules!=null?j.data.modules+' 个模块已重建':'已生效') +'</span>';
+    if(which==='btn'){ refreshBtnStatus(); setTimeout(refreshBtnStatus,1500); setTimeout(refreshBtnStatus,5000); } }
   else el('cfgMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
 }
 async function updateGeoip(){
@@ -508,26 +516,64 @@ async function refreshDashboard(){
   }).join('') : '<div class="empty">还没有下载器。点击「+ 添加下载器」添加一个 qBittorrent 即可开始自动封禁。</div>';
 }
 
-async function checkUpdate(){
-  try{ const j=await api('/api/update/check'); const d=j.data;
-    if(d&&d.newer){ const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden'); }
-  }catch(e){}
+let LATEST_UPD=null;
+// 统一渲染更新态到「关于/检查更新」卡与 header 徽标(轮询与手动检查共用)。
+function renderUpdate(d){
+  if(!d) return; LATEST_UPD=d;
+  if(d.current) el('aboutVer').textContent='v'+d.current;
+  const b=el('updBadge'), apply=el('updApplyBtn'), manual=el('updManualLink'), r=el('updResult');
+  if(d.newer){
+    b.textContent='有新版本 '+d.latest; b.classList.remove('hidden');
+    apply.classList.remove('hidden');
+    manual.href=d.html_url||'#'; manual.classList.remove('hidden');
+    r.innerHTML='<span class="ok">发现新版本 '+esc(d.latest)+'</span>，下方可选<b>自动更新</b>或<b>手动下载</b>。';
+  } else {
+    b.classList.add('hidden'); apply.classList.add('hidden'); manual.classList.add('hidden');
+    r.innerHTML='<span class="mut">已是最新('+esc(d.latest||d.current||'')+')</span>';
+  }
 }
+function fmtAgo(ms){ if(!ms) return '从未'; const s=Math.max(0,(Date.now()-ms)/1000);
+  if(s<60) return Math.round(s)+'秒前'; if(s<3600) return Math.round(s/60)+'分钟前';
+  if(s<86400) return Math.round(s/3600)+'小时前'; return Math.round(s/86400)+'天前'; }
+// BTN 连接状态指示器:绿=已连接/红=连接失败(带原因)/黄=启动或连接中/灰=未启用。
+async function refreshBtnStatus(){
+  const box=el('btnStat'); if(!box) return;
+  let d; try{ const j=await api('/api/btn/status'); if(!j.ok) return; d=j.data||{}; }catch(e){ return; }
+  let led='led-off', txt='';
+  if(!d.enabled){ led='led-off'; txt='<span class="mut">未启用（勾选下方「启用 BTN」并填凭证后保存）</span>'; }
+  else if(!d.running){ led='led-wait'; txt='<span class="mut">启动中…</span>'; }
+  else if(d.config_ok){ led='led-ok';
+    const bits=['<b>已连接</b>','abilities '+(d.ability_count||0),
+      '黑'+(d.denylist_entries||0)+'/白'+(d.allowlist_entries||0)+'/规则组'+(d.rule_groups||0)];
+    if(d.heartbeat_ip) bits.push('外网IP '+esc(d.heartbeat_ip));
+    bits.push('config '+fmtAgo(d.config_at_ms));
+    txt='<span>'+bits.join(' · ')+'</span>';
+  }
+  else if(d.config_at_ms){ led='led-bad';
+    txt='<span class="bad"><b>连接失败</b></span>'+(d.last_error?' <span class="mut">'+esc(d.last_error)+'（'+fmtAgo(d.last_error_at_ms)+'，600s 后自动重试）</span>':''); }
+  else { led='led-wait'; txt='<span class="mut">连接中…</span>'; }
+  box.innerHTML='<span class="ledp '+led+'"></span>'+txt;
+}
+// 后台轮询:静默检查,仅更新徽标/关于卡状态(不打扰)。
+async function checkUpdate(){ try{ const j=await api('/api/update/check'); if(j.ok&&j.data) renderUpdate(j.data); }catch(e){} }
+// 显式点击「检查更新」:同上但先给"检查中"反馈,并对失败给出提示。
 async function manualCheckUpdate(){
   const r=el('updResult'); r.innerHTML='检查中…';
   try{
     const j=await api('/api/update/check');
     if(!j.ok){ r.innerHTML='<span class="bad">✗ '+esc(j.error||'检查失败')+'</span>'; return; }
-    const d=j.data||{}; el('aboutVer').textContent='v'+(d.current||'');
-    if(d.newer){
-      r.innerHTML='<span class="ok">发现新版本 '+esc(d.latest)+'</span> <a href="'+esc(d.html_url||'#')+'" target="_blank" rel="noopener">前往下载 →</a>';
-      const b=el('updBadge'); b.href=d.html_url||'#'; b.textContent='有新版本 '+d.latest; b.classList.remove('hidden');
-      el('updApplyBtn').classList.remove('hidden');
-    } else {
-      r.innerHTML='<span class="mut">已是最新('+esc(d.latest||d.current||'')+')</span>';
-      el('updApplyBtn').classList.add('hidden');
-    }
+    renderUpdate(j.data||{});
   }catch(e){ r.innerHTML='<span class="bad">✗ 请求失败</span>'; }
+}
+// 点击 header「有新版本」徽标:跳到设置页的关于卡,滚动+高亮,并渲染更新态供用户自选自动/手动。
+function gotoUpdate(e){
+  if(e) e.preventDefault();
+  location.hash='#settings';
+  setTimeout(()=>{
+    const c=el('aboutCard');
+    if(c){ c.scrollIntoView({behavior:'smooth',block:'center'}); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
+    if(LATEST_UPD) renderUpdate(LATEST_UPD); else manualCheckUpdate();
+  },70);
 }
 async function applyUpdate(){
   if(!confirm('将下载新版二进制、替换当前程序并自动重启。确定继续?'))return;
@@ -867,6 +913,7 @@ function startPoll(){ stopPoll(); connectLogWs(); refreshDashboard(); checkUpdat
   const cur=(location.hash||'#dashboard').slice(1);
   refreshDashboard();
   if(cur==='bans') loadBans();
+  if(cur==='settings') refreshBtnStatus();
   connectLogWs(); // 确保断线后重连
 }, 3000); }
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } stopLogWs(); }
