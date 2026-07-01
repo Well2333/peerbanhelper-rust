@@ -29,9 +29,8 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             archive: tar.gz
-          - os: macos-13
-            target: x86_64-apple-darwin
-            archive: tar.gz
+          # x86_64-apple-darwin（Intel Mac）已移除：macos-13 runner 稀缺、长时间排队(实测挂 18min+ 无 runner)，
+          # 且 Intel Mac 受众萎缩。如需恢复，可在 macos-latest(Apple 芯片)上加 `rustup target add x86_64-apple-darwin` 交叉编译。
     steps:
       - uses: actions/checkout@v4
 
