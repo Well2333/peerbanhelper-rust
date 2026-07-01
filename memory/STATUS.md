@@ -1,6 +1,6 @@
 # 当前状态与待办（handoff）
 
-> 最近更新：2026-07-01（**v0.1.1 发布前审核修复 + 推送发布**）。清理上下文后从这份读起，再看 `design/roadmap.md`（里程碑详情）、
+> 最近更新：2026-07-02（**v0.1.2：qB 白名单免鉴权修复 + 测试连接详细报错 + 表单补 api-key/basic-auth**）。清理上下文后从这份读起，再看 `design/roadmap.md`（里程碑详情）、
 > `test-status/`（已测/待测）、`changelog/`（逐提交）。流程守则见 `memory/最高优先级工作守则.md`。
 
 ## 一句话现状
@@ -77,6 +77,13 @@ GeoIP 三镜像后台重试下载(City/ASN/GeoCN,45天) · **全局代理**(`pbh
 - 🔒 **token 常数时间比较**：`auth`/`login` 从 `==` 改 `ct_eq`,消除计时侧信道。
 - 🧹 **clippy 清零**：`selfupdate.rs` 的 `spawn_restart` 上移到测试模块前,消除 `items after a test module`。
 - 全工作区 `clippy --all-targets -D warnings` 零告警、`cargo test --workspace` 21 套件全绿。详见 `changelog/2026-07-01-9b16695.md`。
+
+## 已补全（2026-07-02，v0.1.2）
+
+- 🐛 **qB 白名单免鉴权兼容**（重大）：空账密 + qB「对本机/白名单子网跳过身份验证」时，`/auth/login` 仍回 `"Fails."`。旧代码判死 → ①「测试连接」误报；② `ban_manager` 每轮 `login()` 判失败 → **下载器一启动就被挂起、根本没封禁**。修复：`login()` 收到非 `"Ok."` 时用 `/app/version` 探活，通得过就按已登录继续（`qbittorrent.rs` + 3 个 tokio mock 测试）。
+- 🔎 **测试连接详细报错**：`err_chain` 展开错误 source 链（TLS/证书/拒连/超时/DNS），登录被拒给可操作提示（`routes.rs`）。
+- ✅ **WebUI 表单补 `api-key` / `basic-auth`**：下载器模态新增这三个输入框，编辑回填、保存不再清空（此前表单不含 → 保存会抹掉）。
+- 版本 0.1.1 → **0.1.2**。changelog：`2026-07-02-611fcf0.md`（+ 表单提交）。
 
 ## 待办（剩余，均为可选/低价值或需外部条件）
 
