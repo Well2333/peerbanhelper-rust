@@ -329,8 +329,11 @@
       <input id="d_name" placeholder="名称">
       <select id="d_type"><option value="qbittorrent">qBittorrent</option><option value="qbittorrentee">qBittorrentEE</option></select>
       <input id="d_endpoint" placeholder="http://127.0.0.1:8080">
-      <input id="d_user" placeholder="用户名" autocomplete="off">
+      <input id="d_user" placeholder="用户名(留空=靠 qB 白名单免鉴权)" autocomplete="off">
       <input id="d_pass" type="password" placeholder="密码" autocomplete="new-password">
+      <input id="d_apikey" type="password" placeholder="api-key(qB≥5.2 可选;填了则跳过账密登录)" autocomplete="new-password">
+      <input id="d_ba_user" placeholder="反代 Basic 用户名(可选)" autocomplete="off">
+      <input id="d_ba_pass" type="password" placeholder="反代 Basic 密码(可选)" autocomplete="new-password">
       <input id="d_id" placeholder="id(留空=自动生成)">
     </div>
     <div class="row" style="margin-top:11px">
@@ -563,14 +566,17 @@ function closeDlModal(){ el('dlModal').classList.add('hidden'); }
 function editDl(id){
   const c=dlConfigs.find(x=>x.id===id); if(!c) return;
   el('d_id').value=c.id; el('d_name').value=c.name||''; el('d_type').value=c.type; el('d_endpoint').value=c.endpoint||'';
-  el('d_user').value=c.username||''; el('d_pass').value=c.password||''; el('d_inc').checked=!!c['increment-ban'];
+  el('d_user').value=c.username||''; el('d_pass').value=c.password||''; el('d_apikey').value=c['api-key']||'';
+  el('d_ba_user').value=(c['basic-auth']&&c['basic-auth'].user)||''; el('d_ba_pass').value=(c['basic-auth']&&c['basic-auth'].pass)||'';
+  el('d_inc').checked=!!c['increment-ban'];
   el('d_shadow').checked=!!c['use-shadow-ban']; el('d_verify').checked=c['verify-ssl']!==false; el('d_ignpriv').checked=!!c['ignore-private'];
   el('dlModalTitle').textContent='✏️ 编辑 — '+(c.name||c.id); el('dlModal').classList.remove('hidden');
 }
-function resetDlForm(){ ['d_id','d_name','d_endpoint','d_user','d_pass'].forEach(i=>el(i).value=''); el('d_type').value='qbittorrent';
+function resetDlForm(){ ['d_id','d_name','d_endpoint','d_user','d_pass','d_apikey','d_ba_user','d_ba_pass'].forEach(i=>el(i).value=''); el('d_type').value='qbittorrent';
   el('d_inc').checked=false; el('d_shadow').checked=false; el('d_verify').checked=true; el('d_ignpriv').checked=false; el('dlMsg').textContent=''; }
 function dlForm(){ return { id:el('d_id').value.trim(), type:el('d_type').value, name:el('d_name').value.trim(),
   endpoint:el('d_endpoint').value.trim(), username:el('d_user').value, password:el('d_pass').value,
+  'api-key':el('d_apikey').value, 'basic-auth':{ user:el('d_ba_user').value, pass:el('d_ba_pass').value },
   'increment-ban':el('d_inc').checked, 'use-shadow-ban':el('d_shadow').checked,
   'verify-ssl':el('d_verify').checked, 'ignore-private':el('d_ignpriv').checked }; }
 async function saveDl(){
