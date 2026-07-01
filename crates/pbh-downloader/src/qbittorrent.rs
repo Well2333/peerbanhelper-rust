@@ -142,7 +142,31 @@ impl Downloader for QBittorrentClient {
                 )
                 .await?;
             if !body.trim().eq_ignore_ascii_case("Ok.") {
-                return Ok(LoginOutcome::fail(format!("登录被拒: {}", body.trim())));
+                // /auth/login 未返回 "Ok." 不一定是真失败：qB 可对「本机/白名单子网」启用
+                // "跳过身份验证"，此时登录接口仍按账密返回 "Fails."，但其它需鉴权接口照常可用
+                // （这正是"账密为空却能连上、但测试连接报错"的成因）。用 /app/version 探活确认：
+                // 能取到版本 → 会话有效(绕过生效)，继续；否则才判定为真正的登录失败。
+                match self.get_text("/app/version").await {
+                    Ok(v) if !v.trim().is_empty() => {
+                        tracing::info!(
+                            "下载器[{}] /auth/login 返回 \"{}\"，但 /app/version 可访问（qB 疑似对本机/白名单子网跳过鉴权），按已登录继续。",
+                            self.config.id,
+                            body.trim()
+                        );
+                    }
+                    Ok(_) => {
+                        return Ok(LoginOutcome::fail(login_reject_hint(
+                            body.trim(),
+                            "/app/version 返回空响应",
+                        )));
+                    }
+                    Err(e) => {
+                        return Ok(LoginOutcome::fail(login_reject_hint(
+                            body.trim(),
+                            &e.to_string(),
+                        )));
+                    }
+                }
             }
         }
         self.refresh_version().await?;
@@ -287,6 +311,18 @@ fn non_empty(s: String) -> Option<String> {
     } else {
         Some(s)
     }
+}
+
+/// 组装可操作的登录失败原因：区分「账密错」与「未开白名单免鉴权」两种常见成因。
+/// `body`=qB /auth/login 的原始返回（如 "Fails."）；`probe`=免鉴权探活失败详情。
+fn login_reject_hint(body: &str, probe: &str) -> String {
+    format!(
+        "登录失败：qB /api/v2/auth/login 返回 \"{body}\"，且免鉴权探活也失败（{probe}）。请排查：\
+         ① 若 qB 设了账号密码，检查该下载器填写的用户名/密码是否正确；\
+         ② 若你想免密使用，请在 qB「选项 → Web UI」勾选「对本地主机上的客户端跳过身份验证」，\
+         或把运行本程序的机器 IP 加入「对白名单子网中的客户端跳过身份验证」；\
+         ③ 确认端点地址/端口正确、反向代理未拦截 /api/v2 路径。"
+    )
 }
 
 /// 把非 2xx 响应映射为错误：401/403 → `Auth`（重试无益，应暂停），其余 → `Api`。
@@ -435,5 +471,77 @@ mod tests {
         // 其它（5xx/4xx 非鉴权）→ Api（可重试）。
         assert!(!status_error("/x", StatusCode::INTERNAL_SERVER_ERROR, "oops").is_auth());
         assert!(!status_error("/x", StatusCode::NOT_FOUND, "nf").is_auth());
+    }
+
+    #[test]
+    fn login_reject_hint_is_actionable() {
+        let h = login_reject_hint("Fails.", "403 Forbidden");
+        assert!(h.contains("Fails."));
+        assert!(h.contains("跳过身份验证")); // 指向 qB 白名单免鉴权设置
+        assert!(h.contains("用户名/密码")); // 也提示检查账密
+    }
+
+    /// 极简 qB mock：按请求路径返回 canned 响应。`version_ok=false` 时 /app/version 返 403。
+    async fn spawn_mock_qb(version_ok: bool) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let first = req.lines().next().unwrap_or("");
+                let (code, body) = if first.contains("/auth/login") {
+                    ("200 OK", "Fails.".to_string()) // 空账密 → qB 登录接口回 Fails.
+                } else if first.contains("/app/version") {
+                    if version_ok {
+                        ("200 OK", "v5.0.0".to_string()) // 白名单绕过：需鉴权接口照常可用
+                    } else {
+                        ("403 Forbidden", "Forbidden".to_string()) // 无绕过：真失败
+                    }
+                } else {
+                    ("200 OK", String::new()) // setPreferences 等
+                };
+                let resp = format!(
+                    "HTTP/1.1 {code}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn cfg_for(endpoint: String) -> DownloaderConfig {
+        DownloaderConfig {
+            id: "d".into(),
+            kind: "qbittorrent".into(),
+            endpoint,
+            ..Default::default() // 账密留空：模拟靠 qB 白名单免鉴权
+        }
+    }
+
+    #[tokio::test]
+    async fn login_tolerates_qb_auth_bypass() {
+        // /auth/login 回 Fails. 但 /app/version 可访问 → 应按已登录继续（修复"能连上却测试报错"）。
+        let ep = spawn_mock_qb(true).await;
+        let cli = QBittorrentClient::new(cfg_for(ep)).unwrap();
+        let o = cli.login().await.unwrap();
+        assert!(o.success, "白名单绕过下 login 应成功，实际: {}", o.message);
+    }
+
+    #[tokio::test]
+    async fn login_fails_with_hint_when_no_bypass() {
+        // /auth/login 回 Fails. 且 /app/version 也 403 → 真失败，且给出可操作提示。
+        let ep = spawn_mock_qb(false).await;
+        let cli = QBittorrentClient::new(cfg_for(ep)).unwrap();
+        let o = cli.login().await.unwrap();
+        assert!(!o.success);
+        assert!(o.message.contains("跳过身份验证"), "应含排查提示: {}", o.message);
     }
 }

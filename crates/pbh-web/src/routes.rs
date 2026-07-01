@@ -399,6 +399,22 @@ async fn delete_downloader(State(st): State<WebState>, Path(id): Path<String>) -
     }
 }
 
+/// 展开错误的完整 source 链，把底层真实原因（TLS 握手、证书校验、连接被拒、超时、DNS 等）
+/// 拼进消息——reqwest 顶层 Display 往往只说"error sending request"，真正原因在 source 里。
+fn err_chain(e: &dyn std::error::Error) -> String {
+    let mut s = e.to_string();
+    let mut src = e.source();
+    while let Some(inner) = src {
+        let seg = inner.to_string();
+        if !s.contains(&seg) {
+            s.push_str(" ← ");
+            s.push_str(&seg);
+        }
+        src = inner.source();
+    }
+    s
+}
+
 async fn test_downloader(Json(cfg): Json<DownloaderConfig>) -> Response {
     match pbh_downloader::build_downloader(cfg) {
         Ok(d) => match d.login().await {
@@ -406,7 +422,7 @@ async fn test_downloader(Json(cfg): Json<DownloaderConfig>) -> Response {
                 ApiResp::ok(json!({"success": o.success, "message": o.message})).into_response()
             }
             Err(e) => {
-                ApiResp::ok(json!({"success": false, "message": e.to_string()})).into_response()
+                ApiResp::ok(json!({"success": false, "message": err_chain(&e)})).into_response()
             }
         },
         Err(e) => bad_request(e.to_string()),
