@@ -301,9 +301,17 @@
 
     <div class="card">
       <h3>🛰️ 网络代理</h3>
-      <p class="mut" style="margin-top:-4px">应用于 BTN / IP 订阅 / GeoIP 下载 / 检查更新。留空=直连;代理不可达时自动直连。下载器连接不走代理。</p>
+      <p class="mut" style="margin-top:-4px">留空=全部直连。配置后<b>始终</b>按下方勾选走代理(不再因启动瞬间探测不可达而回退直连)。下载器连接恒不走代理(本地)。</p>
       <input id="cfg_proxy" placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" style="width:100%">
-      <div class="row" style="margin-top:10px"><span class="sp"></span><button onclick="saveAppConfig('net')">保存代理</button></div>
+      <p class="mut" style="margin:10px 0 4px;font-size:12.5px">哪些出站走代理(默认只勾易被墙/审查的境外目标):</p>
+      <div class="row" style="flex-wrap:wrap;gap:14px">
+        <label class="row" style="gap:5px"><input type="checkbox" id="pt_btn"> BTN 云端</label>
+        <label class="row" style="gap:5px"><input type="checkbox" id="pt_geoip"> GeoIP 下载</label>
+        <label class="row" style="gap:5px"><input type="checkbox" id="pt_sub"> IP 订阅</label>
+        <label class="row" style="gap:5px"><input type="checkbox" id="pt_update"> 检查/自更新</label>
+        <label class="row" style="gap:5px"><input type="checkbox" id="pt_pubip"> 本机公网IP探测</label>
+      </div>
+      <div class="row" style="margin-top:10px"><span class="sp"></span><button onclick="saveAppConfig('net')">保存代理设置</button></div>
       <div id="cfgMsg" class="mut" style="margin-top:9px"></div>
     </div>
 
@@ -398,6 +406,10 @@ async function loadAppConfig(){
   el('cfg_btn_secret').value=b.app_secret||''; el('cfg_btn_url').value=b.config_url||''; el('cfg_btn_submit').checked=b.submit!==false;
   el('cfg_ip_account').value=ip.account_id||''; el('cfg_ip_license').value=ip.license_key||''; el('cfg_ip_auto').checked=ip.auto_update!==false;
   el('cfg_proxy').value=n.proxy||'';
+  const pt=n.proxy_targets||{};
+  el('pt_btn').checked=pt.btn!==false; el('pt_geoip').checked=pt.geoip!==false;
+  el('pt_sub').checked=pt.rule_subscription!==false; el('pt_update').checked=pt.update!==false;
+  el('pt_pubip').checked=!!pt.public_ip;
   el('aboutVer').textContent=el('verTag').textContent||'…';
   loadNetinfo(); refreshBtnStatus();
 }
@@ -405,11 +417,13 @@ async function saveAppConfig(which){
   const body={};
   if(which==='btn') body.btn={enabled:el('cfg_btn_enabled').checked,config_url:el('cfg_btn_url').value.trim(),submit:el('cfg_btn_submit').checked,app_id:el('cfg_btn_appid').value.trim(),app_secret:el('cfg_btn_secret').value};
   if(which==='ip') body.ip_database={account_id:el('cfg_ip_account').value.trim(),license_key:el('cfg_ip_license').value,auto_update:el('cfg_ip_auto').checked};
-  if(which==='net') body.network={proxy:el('cfg_proxy').value.trim()};
+  if(which==='net') body.network={proxy:el('cfg_proxy').value.trim(),proxy_targets:{
+    btn:el('pt_btn').checked, geoip:el('pt_geoip').checked, rule_subscription:el('pt_sub').checked,
+    update:el('pt_update').checked, public_ip:el('pt_pubip').checked }};
   el('cfgMsg').textContent='保存中…';
   const j=await api('/api/config/app',{method:'PUT',body:JSON.stringify(body)});
   if(j.ok){ toast('已保存并生效'); el('cfgMsg').innerHTML='<span class="ok">✓ 已保存,'+ (j.data&&j.data.modules!=null?j.data.modules+' 个模块已重建':'已生效') +'</span>';
-    if(which==='btn'){ refreshBtnStatus(); setTimeout(refreshBtnStatus,1500); setTimeout(refreshBtnStatus,5000); } }
+    if(which==='btn'||which==='net'){ refreshBtnStatus(); setTimeout(refreshBtnStatus,1500); setTimeout(refreshBtnStatus,5000); } }
   else el('cfgMsg').innerHTML='<span class="bad">✗ '+esc(j.error)+'</span>';
 }
 async function updateGeoip(){

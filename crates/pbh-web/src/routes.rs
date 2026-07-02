@@ -266,7 +266,11 @@ async fn put_profile(State(st): State<WebState>, Json(b): Json<ProfileBody>) -> 
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
-        &st.config.current().app.network.proxy,
+        st.config
+            .current()
+            .app
+            .network
+            .proxy_for(pbh_config::ProxyTarget::RuleSubscription),
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -290,7 +294,16 @@ async fn get_app_config(State(st): State<WebState>) -> Response {
             "license_key": a.ip_database.license_key,
             "auto_update": a.ip_database.auto_update,
         },
-        "network": { "proxy": a.network.proxy },
+        "network": {
+            "proxy": a.network.proxy,
+            "proxy_targets": {
+                "btn": a.network.proxy_targets.btn,
+                "geoip": a.network.proxy_targets.geoip,
+                "rule_subscription": a.network.proxy_targets.rule_subscription,
+                "update": a.network.proxy_targets.update,
+                "public_ip": a.network.proxy_targets.public_ip,
+            },
+        },
         "persist": { "ban_logs_keep_days": a.persist.ban_logs_keep_days },
     }))
     .into_response()
@@ -323,6 +336,17 @@ struct IpDbBody {
 #[derive(Deserialize)]
 struct NetBody {
     proxy: String,
+    #[serde(default)]
+    proxy_targets: Option<ProxyTargetsBody>,
+}
+
+#[derive(Deserialize)]
+struct ProxyTargetsBody {
+    btn: bool,
+    geoip: bool,
+    rule_subscription: bool,
+    update: bool,
+    public_ip: bool,
 }
 
 #[derive(Deserialize)]
@@ -346,6 +370,15 @@ async fn put_app_config(State(st): State<WebState>, Json(b): Json<AppConfigBody>
     }
     if let Some(x) = b.network {
         app.network.proxy = x.proxy;
+        if let Some(t) = x.proxy_targets {
+            app.network.proxy_targets = pbh_config::ProxyTargets {
+                btn: t.btn,
+                geoip: t.geoip,
+                rule_subscription: t.rule_subscription,
+                update: t.update,
+                public_ip: t.public_ip,
+            };
+        }
     }
     if let Some(x) = b.persist {
         app.persist.ban_logs_keep_days = x.ban_logs_keep_days;
@@ -364,7 +397,7 @@ async fn put_app_config(State(st): State<WebState>, Json(b): Json<AppConfigBody>
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
-        &app.network.proxy,
+        app.network.proxy_for(pbh_config::ProxyTarget::RuleSubscription),
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -649,7 +682,11 @@ async fn save_and_rebuild(
         &st.db,
         &st.geoip,
         &st.btn.current_state(),
-        &st.config.current().app.network.proxy,
+        st.config
+            .current()
+            .app
+            .network
+            .proxy_for(pbh_config::ProxyTarget::RuleSubscription),
     );
     let n = modules.len();
     st.ban_manager.rebuild_modules(modules);
@@ -692,7 +729,10 @@ async fn geoip_update(State(st): State<WebState>) -> Response {
     };
     let app = st.config.current().app.clone();
     let dir = st.paths.data_dir().join("geoip");
-    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(60));
+    let client = pbh_net::build_client(
+        app.network.proxy_for(pbh_config::ProxyTarget::Geoip),
+        std::time::Duration::from_secs(60),
+    );
     // 手动点击"更新"= 强制刷新:force=true 无视 45 天/存在性门槛,始终重下最新库。
     let changed = pbh_geoip::download::ensure_databases(
         &client,
@@ -762,7 +802,10 @@ fn version_newer(current: &str, latest: &str) -> bool {
 async fn update_check(State(st): State<WebState>) -> Response {
     let current = env!("CARGO_PKG_VERSION");
     let app = st.config.current().app.clone();
-    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(15));
+    let client = pbh_net::build_client(
+        app.network.proxy_for(pbh_config::ProxyTarget::Update),
+        std::time::Duration::from_secs(15),
+    );
     let url = "https://api.github.com/repos/Well2333/peerbanhelper-rust/releases/latest";
     let resp = client.get(url).send().await;
     match resp {
@@ -787,7 +830,10 @@ async fn apply_update(State(st): State<WebState>) -> Response {
         return bad_request("当前平台不支持自动更新，请前往 Release 手动下载");
     };
     let app = st.config.current().app.clone();
-    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(20));
+    let client = pbh_net::build_client(
+        app.network.proxy_for(pbh_config::ProxyTarget::Update),
+        std::time::Duration::from_secs(20),
+    );
     let url = "https://api.github.com/repos/Well2333/peerbanhelper-rust/releases/latest";
     let j: serde_json::Value = match client.get(url).send().await {
         Ok(r) if r.status().is_success() => match r.json().await {
@@ -820,7 +866,10 @@ async fn apply_update(State(st): State<WebState>) -> Response {
         ));
     };
     // 大文件下载用更长超时。
-    let client = pbh_net::build_client(&app.network.proxy, std::time::Duration::from_secs(180));
+    let client = pbh_net::build_client(
+        app.network.proxy_for(pbh_config::ProxyTarget::Update),
+        std::time::Duration::from_secs(180),
+    );
     match crate::selfupdate::download_and_replace(&client, &dl).await {
         Ok(exe) => {
             crate::selfupdate::spawn_restart(exe);
@@ -945,9 +994,13 @@ async fn fetch_public_ip(client: &reqwest::Client, urls: &[&str], want_v6: bool)
 /// 本机网络地址：局域网 IPv4 + 公网 IPv4/IPv6。
 /// 公网查询走**直连**（下载器连接本就不走代理；这里要的是对外可见的出口 IP，用于外部下载器白名单），
 /// 多服务回退、对中国大陆友好（域内服务优先，并从正文中提取 IP 而非要求整体为 IP）。
-async fn netinfo(State(_st): State<WebState>) -> Response {
+async fn netinfo(State(st): State<WebState>) -> Response {
     let lan = local_ipv4_addrs();
-    let client = pbh_net::build_client("", std::time::Duration::from_secs(6));
+    // 公网 IP 探测默认直连(域内服务、要的是真实出口 IP);仅当用户在设置里勾选 public-ip 才走代理。
+    let client = pbh_net::build_client(
+        st.config.current().app.network.proxy_for(pbh_config::ProxyTarget::PublicIp),
+        std::time::Duration::from_secs(6),
+    );
     let public = fetch_public_ip(
         &client,
         &[

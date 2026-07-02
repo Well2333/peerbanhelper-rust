@@ -44,7 +44,10 @@ impl BtnManager {
                 installation_id: self.installation_id.clone(),
                 submit: app.btn.submit,
                 ban_duration,
-                proxy: app.network.proxy.clone(),
+                proxy: app
+                    .network
+                    .proxy_for(pbh_config::ProxyTarget::Btn)
+                    .to_string(),
             },
             self.db.clone(),
             state.clone(),

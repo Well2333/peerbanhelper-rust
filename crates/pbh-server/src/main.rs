@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &db,
         &geoip,
         &btn_state,
-        &app_cfg.network.proxy,
+        app_cfg.network.proxy_for(pbh_config::ProxyTarget::RuleSubscription),
     );
     let module_count = modules.len();
     // BTN 开启上报时跟踪 swarm（供 submit_swarm）。
@@ -154,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 let app_cfg = config.current().app.clone(); // 每轮重读,代理改动可生效
                 let client = pbh_net::build_client(
-                    &app_cfg.network.proxy,
+                    app_cfg.network.proxy_for(pbh_config::ProxyTarget::Geoip),
                     std::time::Duration::from_secs(60),
                 );
                 let changed = pbh_geoip::download::ensure_databases(

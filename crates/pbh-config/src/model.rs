@@ -99,6 +99,66 @@ impl Default for IpDatabaseConfig {
 pub struct NetworkConfig {
     /// 出站代理 URL(http/https/socks5);空字符串表示直连。
     pub proxy: String,
+    /// 分类代理开关:仅对勾选的出站类别启用代理。默认只勾选易被墙/审查的境外目标。
+    pub proxy_targets: ProxyTargets,
+}
+
+/// 出站请求的代理分类开关。默认:境外/易被墙目标(BTN/GeoIP/订阅/更新)走代理;
+/// 境内目标(本机公网 IP 探测)直连。下载器连接恒不走代理(本地,不可配)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct ProxyTargets {
+    /// BTN 云端威胁情报(github/ghostchu 系,易被墙)。
+    pub btn: bool,
+    /// GeoIP 库镜像下载(含 github)。
+    pub geoip: bool,
+    /// IP 规则订阅下载(多为境外源)。
+    pub rule_subscription: bool,
+    /// 检查更新 / 一键自更新(api.github.com)。
+    pub update: bool,
+    /// 本机公网 IP 探测(默认用境内服务,通常直连更快更准)。
+    pub public_ip: bool,
+}
+
+impl Default for ProxyTargets {
+    fn default() -> Self {
+        ProxyTargets {
+            btn: true,
+            geoip: true,
+            rule_subscription: true,
+            update: true,
+            public_ip: false,
+        }
+    }
+}
+
+/// 出站类别标识,配合 [`NetworkConfig::proxy_for`] 决定该类别是否走代理。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyTarget {
+    Btn,
+    Geoip,
+    RuleSubscription,
+    Update,
+    PublicIp,
+}
+
+impl NetworkConfig {
+    /// 返回某类别应使用的代理字符串:该类别已勾选且 `proxy` 非空 → `proxy`;否则空串(直连)。
+    /// 各联网点统一调用它取 proxy 再交给 `pbh_net::build_client`,即可实现"分类走代理"。
+    pub fn proxy_for(&self, target: ProxyTarget) -> &str {
+        let on = match target {
+            ProxyTarget::Btn => self.proxy_targets.btn,
+            ProxyTarget::Geoip => self.proxy_targets.geoip,
+            ProxyTarget::RuleSubscription => self.proxy_targets.rule_subscription,
+            ProxyTarget::Update => self.proxy_targets.update,
+            ProxyTarget::PublicIp => self.proxy_targets.public_ip,
+        };
+        if on {
+            &self.proxy
+        } else {
+            ""
+        }
+    }
 }
 
 // ---------------- profile.yml ----------------
@@ -185,5 +245,47 @@ mod tests {
         assert!(y.contains("proxy: http://127.0.0.1:7890"));
         let back: AppConfig = serde_yaml::from_str(&y).unwrap();
         assert_eq!(back.network.proxy, "http://127.0.0.1:7890");
+    }
+
+    #[test]
+    fn proxy_targets_default_only_censored() {
+        let t = ProxyTargets::default();
+        // 默认:境外/易被墙目标走代理,境内公网 IP 探测直连。
+        assert!(t.btn && t.geoip && t.rule_subscription && t.update);
+        assert!(!t.public_ip);
+    }
+
+    #[test]
+    fn proxy_for_gates_by_target() {
+        let mut n = NetworkConfig {
+            proxy: "http://127.0.0.1:7890".into(),
+            ..Default::default()
+        };
+        // 默认勾选的类别拿到代理,未勾选的(public_ip)拿到空串(直连)。
+        assert_eq!(n.proxy_for(ProxyTarget::Btn), "http://127.0.0.1:7890");
+        assert_eq!(n.proxy_for(ProxyTarget::Update), "http://127.0.0.1:7890");
+        assert_eq!(n.proxy_for(ProxyTarget::PublicIp), "");
+        // 关掉 btn 后该类别直连,其它不受影响。
+        n.proxy_targets.btn = false;
+        assert_eq!(n.proxy_for(ProxyTarget::Btn), "");
+        assert_eq!(n.proxy_for(ProxyTarget::Geoip), "http://127.0.0.1:7890");
+        // proxy 为空时,任何类别都直连。
+        n.proxy.clear();
+        n.proxy_targets.btn = true;
+        assert_eq!(n.proxy_for(ProxyTarget::Btn), "");
+    }
+
+    #[test]
+    fn proxy_targets_roundtrip_kebab() {
+        let mut a = AppConfig::default();
+        a.network.proxy_targets.public_ip = true;
+        a.network.proxy_targets.btn = false;
+        let y = serde_yaml::to_string(&a).unwrap();
+        assert!(y.contains("proxy-targets:"));
+        assert!(y.contains("public-ip: true"));
+        let back: AppConfig = serde_yaml::from_str(&y).unwrap();
+        assert!(back.network.proxy_targets.public_ip);
+        assert!(!back.network.proxy_targets.btn);
+        assert!(back.network.proxy_targets.geoip); // 缺省字段回退默认(true)
     }
 }

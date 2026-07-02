@@ -30,32 +30,33 @@ pub fn proxy_reachable(proxy: &str) -> bool {
     addrs.any(|addr| std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(1000)).is_ok())
 }
 
-/// 构造 reqwest 客户端。proxy 为空或不可达 → 直连;否则走代理。
+/// 构造 reqwest 客户端。proxy 为空 → 直连;非空且 URL 合法 → **始终应用代理**。
 ///
-/// 默认行为:
-/// - 自动解压 gzip 响应(需 reqwest `gzip` feature)。
-/// - 发送默认 `User-Agent: PeerBanHelper-Rust/<version>`;各调用方可在请求级别覆盖。
+/// 设计:代理是"权威"的——一旦为某类别配置了代理,就总是走它,**不再**因启动瞬间
+/// 探测不可达而回退直连。理由:①被墙目标直连必失败,回退直连毫无意义;②pbh 常先于
+/// clash/v2ray 起来,若探测失败即永久直连会"卡死"(见此前现象);始终应用代理则各处的
+/// 重试循环(BTN/GeoIP/订阅)会在代理就绪后自动恢复。仅对"配置了但当前探测不可达"做一次 warn。
 ///
-/// # 阻塞说明
-///
-/// 若 proxy 非空,本函数内部会调用 [`proxy_reachable`] 执行阻塞式 DNS + TCP 探测
-/// (超时约 1 秒)。本函数仅供启动或配置变更时调用,请勿在每次请求的热路径中调用。
+/// 默认行为:自动解压 gzip;默认 `User-Agent: PeerBanHelper-Rust/<version>`(调用方可请求级覆盖)。
 pub fn build_client(proxy: &str, timeout: Duration) -> reqwest::Client {
     let mut b = reqwest::Client::builder()
         .timeout(timeout)
         .gzip(true)
         .user_agent(concat!("PeerBanHelper-Rust/", env!("CARGO_PKG_VERSION")));
-    if !proxy.trim().is_empty() {
-        if proxy_reachable(proxy) {
-            match reqwest::Proxy::all(proxy) {
-                Ok(p) => {
+    let proxy = proxy.trim();
+    if !proxy.is_empty() {
+        match reqwest::Proxy::all(proxy) {
+            Ok(p) => {
+                if proxy_reachable(proxy) {
                     tracing::info!("出站代理已启用: {proxy}");
-                    b = b.proxy(p);
+                } else {
+                    tracing::warn!(
+                        "出站代理已配置但当前探测不可达({proxy}),仍按配置走代理(代理就绪后自动恢复)"
+                    );
                 }
-                Err(e) => tracing::warn!("代理 URL 无效({proxy}),改直连: {e}"),
+                b = b.proxy(p);
             }
-        } else {
-            tracing::warn!("代理不可达({proxy}),本次改直连");
+            Err(e) => tracing::warn!("代理 URL 无效({proxy}),改直连: {e}"),
         }
     }
     b.build().unwrap_or_else(|e| {

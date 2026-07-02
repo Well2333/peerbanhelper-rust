@@ -14,7 +14,7 @@ pub mod paths;
 use std::sync::Arc;
 use tokio::sync::watch;
 
-pub use model::{AppConfig, ProfileConfig};
+pub use model::{AppConfig, NetworkConfig, ProfileConfig, ProxyTarget, ProxyTargets};
 pub use paths::Paths;
 
 /// 配置加载/IO 错误。
