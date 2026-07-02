@@ -1,6 +1,6 @@
 # 当前状态与待办（handoff）
 
-> 最近更新：2026-07-02（**v0.1.3：更新徽标跳设置自选自动/手动 + BTN 连接状态指示器**）。清理上下文后从这份读起，再看 `design/roadmap.md`（里程碑详情）、
+> 最近更新：2026-07-02（**v0.1.4：代理审计重构 —— 启动即生效 + 分类代理开关(设置页可视化)**）。清理上下文后从这份读起，再看 `design/roadmap.md`（里程碑详情）、
 > `test-status/`（已测/待测）、`changelog/`（逐提交）。流程守则见 `memory/最高优先级工作守则.md`。
 
 ## 一句话现状
@@ -90,6 +90,12 @@ GeoIP 三镜像后台重试下载(City/ASN/GeoCN,45天) · **全局代理**(`pbh
 - ✅ **更新徽标跳设置页 + 自选自动/手动**：header「有新版本」不再直接开 Release，改跳设置页「关于/检查更新」卡（滚动+高亮），卡内并列「⚡ 自动更新」与「⬇ 手动下载」两入口。
 - ✅ **BTN 连接状态指示器**：设置页 BTN 卡新增状态灯（绿=已连接/显示 abilities·黑白名单·规则组·心跳IP·config时间；红=连接失败+原因；黄=连接中；灰=未启用）。后端 `BtnState.status`(`BtnStatus`) + `GET /api/btn/status`；前端轮询渲染、保存后即时刷新。冒烟验证通过。
 - 版本 0.1.2 → **0.1.3**。changelog：`2026-07-02-1a1c9c7.md`。
+
+## 已补全（2026-07-02，v0.1.4）
+
+- ✅ **代理权威化(修启动优先级)**：`pbh-net::build_client` 改为"配置了代理即始终应用",去掉探测不可达→回退直连(pbh 先于 clash 启动会永久直连的坑);重试循环在代理就绪后自愈。
+- ✅ **分类代理开关**：`network.proxy-targets`(btn/geoip/rule-subscription/update/public-ip),默认只勾易被墙目标、public-ip 直连;`NetworkConfig::proxy_for(ProxyTarget)` 统一取用;全部联网点接入(BTN/订阅/GeoIP/更新/公网IP;下载器恒直连)。设置页 5 个勾选框读写 `/api/config/app`。
+- 版本 0.1.3 → **0.1.4**。changelog：`2026-07-02-1ba66a3.md`。
 
 ## 待办（剩余，均为可选/低价值或需外部条件）
 
